@@ -15,3 +15,7 @@ graph-exports/
 .DS_Store
 node_modules/
 dist/
+
+# Browser test output (may contain private data during manual testing)
+test-results/
+playwright-report/

@@ -1,0 +1,39 @@
+{
+  "name": "flywheel-viz",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k -n api,web \"node --import tsx --watch server/index.ts\" \"vite --host 127.0.0.1\"",
+    "build": "tsc --noEmit && vite build",
+    "start": "NODE_ENV=production node --import tsx server/index.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "check": "npm test && npm run build",
+    "test:ui": "playwright test",
+    "format": "prettier --write src server shared tests *.ts *.json index.html README.md"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.5",
+    "cytoscape": "^3.34.3",
+    "fastify": "^5.12.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/cytoscape": "^3.21.9",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}
