@@ -1,0 +1,17 @@
+# Private local graph data and credentials
+.flywheel/
+.flywheel-runtime-locks/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.flywheel-backup
+graph-exports/
+
+# Local tooling and generated output
+.DS_Store
+node_modules/
+dist/
