@@ -13,6 +13,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "npm test && npm run build",
     "test:ui": "playwright test",
+    "benchmark:graphs": "node --import tsx scripts/benchmark-graphs.ts",
     "format": "prettier --write src server shared tests *.ts *.json index.html README.md"
   },
   "dependencies": {

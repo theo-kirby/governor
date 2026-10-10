@@ -51,6 +51,7 @@ export interface DebugSettings {
   seed: number;
   density: number;
   crossLinks: boolean;
+  lod: boolean;
   ringGap: number;
   spacing: number;
   curvature: number;
@@ -66,6 +67,7 @@ export const debugDefaults: DebugSettings = {
   seed: 1,
   density: 0.2,
   crossLinks: false,
+  lod: false,
   ringGap: 180,
   spacing: 140,
   curvature: 1,
@@ -93,11 +95,17 @@ export function normalizeSettings(
   return {
     shape:
       value.shape && Object.hasOwn(shapes, value.shape) ? value.shape : "demo",
-    count: number("count", 2, value.shape === "dense" ? 60 : 200, true),
+    count: number(
+      "count",
+      2,
+      value.shape === "dense" ? 60 : value.lod ? 10000 : 200,
+      true,
+    ),
     branches: number("branches", 2, 8, true),
     seed: number("seed", 1, 99999, true),
     density: number("density", 0, 1),
     crossLinks: value.crossLinks === true,
+    lod: value.lod === true,
     ringGap: number("ringGap", 70, 320),
     spacing: number("spacing", 50, 240),
     curvature: number("curvature", 0, 2.5),
@@ -115,7 +123,10 @@ export function settingsFromUrl(query: URLSearchParams) {
     value[key] =
       key === "shape" || key === "tagFilter"
         ? query.get(key)
-        : key === "labels" || key === "tags" || key === "crossLinks"
+        : key === "labels" ||
+            key === "tags" ||
+            key === "crossLinks" ||
+            key === "lod"
           ? query.get(key) !== "0"
           : Number(query.get(key));
   }
@@ -126,7 +137,10 @@ export function debugQuery(settings: DebugSettings) {
   for (const [key, value] of Object.entries(settings))
     query.set(
       key,
-      key === "labels" || key === "tags" || key === "crossLinks"
+      key === "labels" ||
+        key === "tags" ||
+        key === "crossLinks" ||
+        key === "lod"
         ? value
           ? "1"
           : "0"
@@ -142,7 +156,7 @@ export function generateDebugGraph(input: DebugSettings) {
       ? 0
       : settings.shape === "single"
         ? 1
-        : Math.min(settings.count, settings.shape === "dense" ? 60 : 200);
+        : settings.count;
   const nodes: GraphNode[] = Array.from({ length: count }, (_, index) => ({
     id: `debug-${index}`,
     title: `Node ${index + 1}`,

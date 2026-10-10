@@ -17,50 +17,7 @@ export function layoutGraph(
 ) {
   const ringGap = options.ringGap ?? RING_GAP;
   const spacing = options.spacing ?? LABEL_SPACING;
-  const ids = new Set(nodes.map((node) => node.id));
-  const children = new Map(nodes.map((node) => [node.id, [] as string[]]));
-  const incoming = new Set<string>();
-  const containment = edges.filter((edge) => edge.kind === "containment");
-  const parents = edges.filter((edge) => edge.relation === "parent");
-  const hierarchy = containment.length
-    ? containment
-    : parents.length
-      ? parents
-      : edges.filter((edge) => edge.relation !== "citation");
-  for (const edge of hierarchy) {
-    if (
-      !ids.has(edge.source) ||
-      !ids.has(edge.target) ||
-      edge.source === edge.target
-    )
-      continue;
-    children.get(edge.source)!.push(edge.target);
-    incoming.add(edge.target);
-  }
-  // Build a spanning forest so cycles and multiple parents never duplicate nodes.
-  const roots: string[] = [];
-  const visited = new Set<string>();
-  const tree = new Map(nodes.map((node) => [node.id, [] as string[]]));
-  const order: string[] = [];
-  for (const node of [
-    ...nodes.filter((node) => !incoming.has(node.id)),
-    ...nodes,
-  ]) {
-    if (visited.has(node.id)) continue;
-    roots.push(node.id);
-    visited.add(node.id);
-    const queue = [node.id];
-    for (let index = 0; index < queue.length; index++) {
-      const id = queue[index];
-      order.push(id);
-      for (const child of children.get(id)!) {
-        if (visited.has(child)) continue;
-        visited.add(child);
-        tree.get(id)!.push(child);
-        queue.push(child);
-      }
-    }
-  }
+  const { roots, tree, order } = spanningForest(nodes, edges);
   // Reserve one contiguous sector per subtree, shared across all its levels.
   // Re-spacing each ring independently would pull descendants across branches.
   const weights = new Map<string, number>();
@@ -130,4 +87,53 @@ export function layoutGraph(
       ] as const;
     }),
   );
+}
+
+/** Shared deterministic backbone; citations never choose hierarchy or grouping. */
+export function spanningForest(nodes: GraphNode[], edges: GraphEdge[]) {
+  const ids = new Set(nodes.map((node) => node.id));
+  const children = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const incoming = new Set<string>();
+  const containment = edges.filter((edge) => edge.kind === "containment");
+  const parents = edges.filter((edge) => edge.relation === "parent");
+  const hierarchy = containment.length
+    ? containment
+    : parents.length
+      ? parents
+      : edges.filter((edge) => edge.relation !== "citation");
+  for (const edge of hierarchy) {
+    if (
+      !ids.has(edge.source) ||
+      !ids.has(edge.target) ||
+      edge.source === edge.target
+    )
+      continue;
+    children.get(edge.source)!.push(edge.target);
+    incoming.add(edge.target);
+  }
+  // Build a spanning forest so cycles and multiple parents never duplicate nodes.
+  const roots: string[] = [];
+  const visited = new Set<string>();
+  const tree = new Map(nodes.map((node) => [node.id, [] as string[]]));
+  const order: string[] = [];
+  for (const node of [
+    ...nodes.filter((node) => !incoming.has(node.id)),
+    ...nodes,
+  ]) {
+    if (visited.has(node.id)) continue;
+    roots.push(node.id);
+    visited.add(node.id);
+    const queue = [node.id];
+    for (let index = 0; index < queue.length; index++) {
+      const id = queue[index];
+      order.push(id);
+      for (const child of children.get(id)!) {
+        if (visited.has(child)) continue;
+        visited.add(child);
+        tree.get(id)!.push(child);
+        queue.push(child);
+      }
+    }
+  }
+  return { roots, tree, order };
 }

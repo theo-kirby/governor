@@ -4,6 +4,7 @@ import type { GraphNode, GraphEdge } from "../shared/types";
 import { layoutGraph, NODE_DIAMETER, CONTAINER_DIAMETER } from "./layout";
 import { outwardBend } from "./edge-curves";
 import { nodeLabel } from "./node-label";
+import { MultiscaleGraph } from "./MultiscaleGraph";
 
 export interface GraphTuning {
   ringGap: number;
@@ -13,6 +14,7 @@ export interface GraphTuning {
   tags: boolean;
   tagFilter: string;
   overview: boolean;
+  lod?: boolean;
 }
 const defaultTuning: GraphTuning = {
   ringGap: 180,
@@ -34,7 +36,7 @@ function fitGraph(graph: Core) {
   }
 }
 
-export function Graph({
+function RadialGraph({
   nodes,
   edges,
   label = "Committed graph",
@@ -260,5 +262,20 @@ export function Graph({
       role="img"
       aria-label={`${label} with ${nodes.length} nodes and ${edges.length} relationships, arranged radially. ${nodes.filter((node) => node.tags?.length).length} tagged nodes. Drag to pan, scroll to zoom. Keyboard: arrows to pan, plus or minus to zoom, F to fit.`}
     />
+  );
+}
+
+export function Graph(props: Parameters<typeof RadialGraph>[0]) {
+  const tuning = props.tuning || defaultTuning;
+  const lod =
+    tuning.lod ?? new URLSearchParams(location.search).get("lod") === "1";
+  return lod ? (
+    <MultiscaleGraph
+      {...props}
+      label={props.label || "Committed graph"}
+      tuning={tuning}
+    />
+  ) : (
+    <RadialGraph {...props} />
   );
 }

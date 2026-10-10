@@ -3,6 +3,7 @@
 A local, read-only Flywheel graph on a black screen. Nothing surrounds the graph:
 no logo, sidebar, toolbar, inspector, search, legend, or visible status messages.
 An optional `?debug` mode adds a compact control panel for synthetic stress tests.
+An optional `&lod=1` experiment adds a multiscale radial map with tuning controls.
 Circular nodes, labels, and edges use only white and shades of gray. Labels sit
 below the circles; containers use slightly larger circles.
 
@@ -74,6 +75,73 @@ and 2,531 citations). Large graphs start near a root at a readable scale. Press
 **F** for the full overview, then pan and zoom to explore. Citations are real
 cross-links and can make the overview dense; none are silently hidden.
 
+## Multiscale radial atlas experiment
+
+Try **http://127.0.0.1:4311/?repo=../cadex&lod=1** or
+**http://127.0.0.1:4311/?repo=../lab&lod=1**. The same experiment works with
+`?demo&lod=1` and synthetic graphs:
+**http://127.0.0.1:4311/?debug=1&lod=1&shape=tree&count=10000**.
+Use port 5173 when running the dev server. Remove `lod=1` to compare with the
+original renderer. Repository reads and source files are unchanged by this mode.
+
+The hypothesis is that a large graph should behave like a map: an overview of
+neighborhoods, progressively revealing the same radial node diagrams when zoomed
+in. Every original node belongs to exactly one visible-level node or group,
+including groups outside the viewport. No new graph entities are persisted.
+
+- **Dashed circles** are neighborhoods, with exact node counts. Solid circles
+  are individual nodes. Circle area reflects layout space, not node count.
+- **Scroll / + / −** zoom; drag or arrow keys pan. Double-click a neighborhood
+  to explore it; **F**, **0**, or **Fit** restores the whole graph.
+- **Click** selects a node or neighborhood and reveals its incident cross-links.
+  The selection line gives the full title and tags or internal relationship count.
+  Escape clears selection. Hover shows the full title.
+- **Detail** changes when groups open without changing their positions.
+  **Neighborhood** changes the target size of local diagrams and rebuilds the map.
+  These two controls and link visibility are session-only experimental settings.
+- **Links** compares structure only, structure plus selected cross-links, and
+  all relationships. Small graphs (up to 40 nodes) show all links in the default
+  mode. Large graphs initially hide unselected cross-links explicitly through
+  this control. Directed links between the same pair of visible groups are
+  aggregated separately by structure/cross-link category. Width indicates count;
+  selecting an endpoint reveals the count on repeated links. Internal edges
+  reappear as their group opens. Self-loops remain at individual-node detail.
+- Labels use screen-space collision checks. Selected labels take priority;
+  zooming reveals more titles and tags. Labels can move beside nodes when crowded,
+  and dense local chains reduce circle size to prevent overlap. Offscreen shapes
+  are not drawn.
+
+Small graphs keep their existing radial coordinates. Larger graphs use the same
+layout inside bounded neighborhoods. The grouping prefers spanning-tree branch
+boundaries, with balanced spatial cuts for long chains, wide stars, and severely
+uneven branches. Disconnected components are kept separate until higher levels
+need to summarize them. Citations never determine the layout hierarchy.
+Unequal components pack around larger ones instead of reserving equally huge
+slots. Once built, positions stay fixed across zoom and detail changes; late tag
+enrichment preserves the camera. The prototype uses Canvas 2D; the original
+Cytoscape renderer remains the default.
+
+This is a comparison tool, not a finished massive-graph solution. Groups labeled
+“Near …” are structural/spatial neighborhoods, not inferred semantic topics.
+Multiple-parent links can still cross. Group boundaries switch discretely rather
+than fading, and labels can be omitted when crowded. The whole snapshot remains
+in memory and the current renderer scans edges on each redraw: this is tested
+at 10,000 synthetic nodes, not millions. Canvas node selection is currently
+pointer-based; keyboard controls cover camera navigation.
+
+The next experiments should compare branch grouping with community-based grouping,
+edge bundling with selection-only cross-links, and a local focus lens that reveals
+detail while retaining the full overview. The map-like direction is informed by
+[GraphMaps](https://www.microsoft.com/en-us/research/publication/graphmaps-browsing-large-graphs-interactive-maps/);
+this prototype does not implement that paper's algorithm.
+
+Evaluate a change by checking: Can you identify the main branches at overview?
+Follow a relationship to its exact endpoints? Zoom in and back out without losing
+your place? Does the 16-node demo remain as useful as before? Use the same Cadex,
+lab, balanced-tree, random, chain, and star examples for each comparison.
+Run `npm run benchmark:graphs` for repeatable synthetic layout/frontier timings;
+these measure computation, not browser frame rate.
+
 ## Debug playground
 
 Open **http://127.0.0.1:5173/?debug** (or port 4311 for the production server).
@@ -81,7 +149,7 @@ The panel offers 13 shapes: the research demo, balanced tree, deep chain, wide
 star, lopsided tree, repeated merges, directed cycle, disconnected islands,
 dense graph, seeded random structure, loops/parallel edges, a single node, and an empty graph.
 
-- Set **Nodes** (2–200) and **Branches / islands** where applicable. The demo,
+- Set **Nodes** (2–200, or up to 10,000 with **Multiscale experiment**) and **Branches / islands** where applicable. The demo,
   single-node, and empty presets have fixed sizes.
 - **Random structure** mixes uneven containment branches, disconnected roots, and
   optional cross-links. **Add cross-links** is off by default; enable it to stress
@@ -230,6 +298,8 @@ causes a fresh scan. The viewer does not create, assign, rename, or retire tags.
 - `src/DebugView.tsx`: debug-only preset and live tuning controls.
 - `src/layout.ts`: Radial geometry for all nodes, with space reserved for circular nodes and their labels.
 - `src/GraphCanvas.tsx`: grayscale canvas rendering and pointer/keyboard gestures.
+- `src/multiscale.ts`: structural neighborhoods, fixed nested geometry, and lossless LOD edge aggregation.
+- `src/MultiscaleGraph.tsx`: experimental Canvas 2D map, detail controls, selection, and label culling.
 - `src/edge-curves.ts`: outward Bézier bend direction for each pair of endpoints.
 - `src/node-label.ts`: bounded title/tag annotation formatting.
 - `src/styles.css`: black, full-viewport presentation.
@@ -246,6 +316,7 @@ path is saved in local storage. The app does not access SQLite directly.
 npm run check          # Adapter/API/layout tests, TypeScript, production build
 npx playwright install chromium
 npm run test:ui        # Synthetic browser tests; starts dev server if needed
+npm run benchmark:graphs # Synthetic 40 / 1,000 / 10,000-node atlas timings
 npm run format        # Format source, configuration, and README
 ```
 

@@ -42,6 +42,7 @@ export function DebugView() {
       tags: settings.tags,
       tagFilter: settings.tagFilter,
       overview: true,
+      lod: settings.lod,
     }),
     [
       settings.ringGap,
@@ -50,6 +51,7 @@ export function DebugView() {
       settings.labels,
       settings.tags,
       settings.tagFilter,
+      settings.lod,
     ],
   );
   useEffect(() => {
@@ -114,6 +116,14 @@ export function DebugView() {
         </div>
         {!collapsed && (
           <>
+            <label className="debug-checkbox">
+              <input
+                type="checkbox"
+                checked={settings.lod}
+                onChange={(event) => update({ lod: event.target.checked })}
+              />
+              Multiscale experiment (up to 10,000 nodes)
+            </label>
             <label className="debug-field">
               Shape
               <select
@@ -137,7 +147,9 @@ export function DebugView() {
                 <input
                   type="number"
                   min="2"
-                  max={settings.shape === "dense" ? 60 : 200}
+                  max={
+                    settings.shape === "dense" ? 60 : settings.lod ? 10000 : 200
+                  }
                   value={settings.count}
                   disabled={fixedSize}
                   onChange={(event) =>
