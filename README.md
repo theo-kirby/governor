@@ -70,27 +70,39 @@ not a transactional or committed snapshot. There is a 10,000-node / 2 MB-per-nod
 read limit. Paths must stay within the selected repository.
 
 Cadex was checked with 1,120 nodes and 3,671 relationships (1,140 parent links
-and 2,531 citations). Large graphs start near a root at a readable scale. Press
-**F** for the full overview, then pan and zoom to explore. Citations are real
+and 2,531 citations). Graphs open with all displayed nodes and chain markers fitted on screen and refit when
+the viewport changes. Press **F** to restore the overview after exploring. Citations are real
 cross-links and can make the overview dense; none are silently hidden.
 
 ## Debug playground
 
 Open **http://127.0.0.1:5173/?debug** (or port 4311 for the production server).
-The panel offers 13 shapes: the research demo, balanced tree, deep chain, wide
+The panel offers 16 shapes: the research demo, balanced tree, deep chain, wide
 star, lopsided tree, repeated merges, directed cycle, disconnected islands,
-dense graph, seeded random structure, loops/parallel edges, a single node, and an empty graph.
+dense graph, seeded random structure, evolving research, research bursts, parallel projects,
+loops/parallel edges, a single node, and an empty graph.
 
-- Set **Nodes** (2–200) and **Branches / islands** where applicable. The demo,
+- Set **Nodes** (2–2,000) and **Branches / islands** where applicable. The demo,
   single-node, and empty presets have fixed sizes.
 - **Random structure** mixes uneven containment branches, disconnected roots, and
   optional cross-links. **Add cross-links** is off by default; enable it to stress
   non-tree relationships. **Seed** reproduces its topology; **Link density** controls the extra
   cross-links (up to roughly four per node at maximum density).
+- **1,000-node research** starts a large seeded fixture. **Evolving research** mixes
+  experiment chains, forks and merges; **Research bursts** alternates wide parallel
+  experiments with follow-up chains; **Parallel projects** grows independent roots.
+  Optional citations connect earlier evidence. Change **Seed** / **Next seed** to
+  explore variations. These are synthetic stress cases, not a statistical model of research.
+- **Ring layout** compares branch-local rings, previous adaptive depth rings,
+  and classic depth rings. **Role colors and shapes** optionally distinguishes roots
+  (amber diamonds), forks (cyan circles), and merges (violet hexagons). Hypergraph
+  plan/state tags take precedence, using amber/cyan respectively. Other nodes remain gray.
 - Dense graphs are limited to 60 nodes. **Link density** and **Seed** generate
   reproducible cross-links; **Next seed** produces a different case.
 - **Ring distance**, **Node spacing**, **Curve strength**, and **Show labels**
-  change the rendering live. Spacing is a minimum: crowded levels expand all rings together.
+  change the rendering live. Branch-local rings use a radial pitch of the larger of node
+  spacing and 65% of ring distance, with node spacing also enforced around each ring.
+  Previous adaptive rings retain one radius per depth with a minimum radial gap.
 - **Show tags** toggles tag annotations. **Tagged fraction** controls synthetic tag
   coverage; **Spotlight tag** dims nonmatching nodes without changing topology.
   Tag coverage uses a separate seeded stream, so changing it preserves the edges.
@@ -156,37 +168,95 @@ Keep dev dependencies installed: the local server uses the TypeScript runtime.
   the entire graph. These controls have no on-screen buttons.
 - Reload the browser to read the latest committed state and recompute the radial layout.
 
-All live nodes are included, including disconnected nodes. Containment edges
+All live nodes are represented, including disconnected nodes. Containment edges
 are dashed dark gray; semantic edges are solid light gray. Arrowheads indicate
 direction. Edges bow away from the radial center along quadratic Bézier curves.
 The bend is determined geometrically for each edge, independently of its direction
 or relationship type. Spokes through the center stay straight. Containment defines
 the rings; semantic edges connect nodes without changing their placement.
-Each subtree keeps a contiguous angular sector across all depths, with parents
-centered over their descendants. Sparse rings keep gaps where branches end;
-nodes are not independently redistributed around each ring. All rings share a
-consistent radial step, expanded together when necessary for label spacing.
-This favors readable parent-child branches over perfectly even ring occupancy.
-Single-node levels keep their branch direction, so deep chains remain spokes.
-Disconnected components use an implied center with their roots on the first
-ring; no extra node or relationship is created. Cycles and multiple parents are
-reduced to a spanning forest for positioning only; every original edge is still
-drawn. Semantic-only graphs use their directed edges to determine the rings.
+The default is again the **original fixed-sector radial layout**: a node's children
+share a ring and descendants stay in their branch's angular sector. Large graphs
+are simplified before layout using chains and nested branch summaries, rather
+than filling spare space with unrelated nodes.
+
+Add **`&rings=adaptive`** to compare independent depth radii, or **`&rings=compact`**
+for the branch-local spacing experiment. These remain available in debug. All
+modes use the same full-fit camera and detail rendering. Add **`&appearance=roles`**
+for optional role colors and shapes. The default remains monochrome.
+
+Disconnected components share an implied center; no extra node or relationship is
+created. Cycles and multiple parents are reduced to a spanning forest for placement
+only; original relationships are retained, including inward merge and cycle edges;
+collapsed interiors use the projection described below.
+Containment takes priority, then explicit parent links, then non-citation semantic
+links. Citations never move nodes when an explicit hierarchy exists.
 Cross-links can still cross other branches; random fixtures generate them only
 when **Add cross-links** is enabled. Live repository relationships remain visible.
 Long titles are shortened on the canvas, and labels disappear at distant zoom
-levels. Large graphs open at a readable scale around the first containment root when a
-full fit would make the nodes too small. All nodes remain on the canvas; pan
-to explore, or press `F` for the full overview. Resizing preserves the camera.
+levels. Every graph opens fully fitted, and resizing fits it again. Large graphs
+use zoom-dependent circle and edge sizes so the overview does not shrink them
+unnecessarily below a useful pixel size. Circle growth is bounded by layout
+spacing; very large or deep graphs can still become too dense to distinguish on
+small screens. Hover or select a node to reveal its label at readable size and
+highlight direct relationships; hovering also supplies the full title. Visible relationships use reduced emphasis at overview scale. Pan and zoom to explore,
+and press **F** / **0** to return to the overview. Late tag enrichment preserves
+the current camera and selection.
 
 Loading, empty repositories, and failed reads leave the
 screen black. Failures are reported in the browser console; accessible labels
 identify loading and error states. There are no error banners or loading overlays.
 
 For real repositories, the viewer shows committed topology only. It does not display staging, node
-bodies, Markdown, citations, search results, or a selected-node neighborhood.
+bodies, rendered Markdown, or search results. Hypergraph explicit citations are
+read as edges; Flywheel prose is not parsed for citations.
 UUID mentions in content are never inferred as graph edges. There is no graph
 editing, automatic polling, hosted service, or external synchronization.
+
+## Collapsed chains
+
+Uninterrupted parent–child runs now collapse by default: **first node → stacked
+ellipsis marker → last node**. A marker replaces at least two intermediate nodes;
+its label gives their count. Forks and merges remain visible. Cycles are left
+intact. Chain detection follows containment, then explicit parent relationships,
+then non-citation semantic links. It uses distinct neighbors so duplicate links
+cannot accidentally create a fork.
+
+Click a marker to expand its chain. Focus the canvas and press **C** to collapse
+expanded chains again. The layout refits after expansion or collapse. Add
+**`&chains=0`** to a repository URL to compare with every original node visible,
+or uncheck **Collapse linear chains** in debug. The debug toggle is saved in its
+URL; individually expanded chains are temporary view state.
+
+External links to an intermediate node attach to its marker while collapsed;
+edge identities, types and directions are retained. Internal edges are hidden
+inside the marker. Expansion restores exact original nodes and edges. Tags on
+markers are the union of their members' tags, so tag spotlight still finds them.
+No source graph data is modified. Debug node/edge totals describe the source graph,
+while the canvas accessibility description includes the displayed and original
+node counts.
+
+## Nested branch summaries
+
+When more than 40 nodes remain after chain collapse, the viewer builds a display
+forest from the parent hierarchy and folds deeper subtrees into ellipses. Wide
+sets of siblings are partitioned in source order into at most five groups per
+parent. These are navigational groups, not inferred research topics. Their labels
+count original nodes, including nodes inside chain markers.
+
+Click a branch ellipsis to reveal its next level; children may themselves be
+ellipses. Chain markers continue to expand their linear interiors. **C** restores
+the folded overview. Disconnected components and multiple parents use the same
+spanning-forest convention as the radial layout; secondary relationships remain
+cross-links. A thin display-tree link through a sibling group expresses grouping,
+not a new causal relationship in the source graph.
+
+The overview emphasizes the tree. Cross-links are aggregated by visible endpoints,
+kind and relation and faded until hovered or selected; links internal to a folded
+branch are represented inside its marker. Turn off **Nest branch summaries** in
+debug, or add **`&branchesCollapsed=0`**, to compare the chain-only graph. Also add
+**`&chains=0`** for the original uncollapsed nodes and individual edges. Expansion
+refits the view and can change angular allocation; stable positions across levels
+are not guaranteed. Source files remain untouched.
 
 ## Tagged nodes
 
@@ -228,8 +298,11 @@ causes a fresh scan. The viewer does not create, assign, rename, or retire tags.
 - `src/demo.ts`: editable synthetic graph template, independent of the API.
 - `src/debug-graphs.ts`: deterministic stress generators and bounded URL settings.
 - `src/DebugView.tsx`: debug-only preset and live tuning controls.
+- `src/collapse-branches.ts`: nested sibling/subtree summaries and projected cross-links.
+- `src/collapse-chains.ts`: reversible projection of linear interiors into chain markers.
 - `src/layout.ts`: Radial geometry for all nodes, with space reserved for circular nodes and their labels.
-- `src/GraphCanvas.tsx`: grayscale canvas rendering and pointer/keyboard gestures.
+- `src/compact-rings.ts`: branch-local collision spacing with fixed subtree directions.
+- `src/GraphCanvas.tsx`: canvas rendering with optional role encoding and pointer/keyboard gestures.
 - `src/edge-curves.ts`: outward Bézier bend direction for each pair of endpoints.
 - `src/node-label.ts`: bounded title/tag annotation formatting.
 - `src/styles.css`: black, full-viewport presentation.

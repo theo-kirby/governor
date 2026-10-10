@@ -7,6 +7,18 @@ export const shapes = {
     "Random structure",
     "Seeded uneven branches and disconnected roots. Optional cross-links add stress.",
   ],
+  research: [
+    "Evolving research",
+    "Seeded runs of experiments, occasional forks, merges, and evidence citations.",
+  ],
+  burst: [
+    "Research bursts",
+    "Seeded bursts of parallel work followed by long follow-up chains.",
+  ],
+  teams: [
+    "Parallel projects",
+    "Seeded independent projects with uneven growth and optional cross-project citations.",
+  ],
   tree: [
     "Balanced tree",
     "Regular branching: check ring spacing and label collisions.",
@@ -46,11 +58,15 @@ export const shapes = {
 export type Shape = keyof typeof shapes;
 export interface DebugSettings {
   shape: Shape;
+  rings: "compact" | "adaptive" | "classic";
+  appearance: "mono" | "roles";
   count: number;
   branches: number;
   seed: number;
   density: number;
   crossLinks: boolean;
+  chains: boolean;
+  branchesCollapsed: boolean;
   ringGap: number;
   spacing: number;
   curvature: number;
@@ -61,11 +77,15 @@ export interface DebugSettings {
 }
 export const debugDefaults: DebugSettings = {
   shape: "demo",
+  rings: "classic",
+  appearance: "mono",
   count: 36,
   branches: 3,
   seed: 1,
   density: 0.2,
   crossLinks: false,
+  chains: true,
+  branchesCollapsed: true,
   ringGap: 180,
   spacing: 140,
   curvature: 1,
@@ -93,11 +113,18 @@ export function normalizeSettings(
   return {
     shape:
       value.shape && Object.hasOwn(shapes, value.shape) ? value.shape : "demo",
-    count: number("count", 2, value.shape === "dense" ? 60 : 200, true),
+    rings:
+      value.rings === "compact" || value.rings === "adaptive"
+        ? value.rings
+        : "classic",
+    appearance: value.appearance === "roles" ? "roles" : "mono",
+    count: number("count", 2, value.shape === "dense" ? 60 : 2000, true),
     branches: number("branches", 2, 8, true),
     seed: number("seed", 1, 99999, true),
     density: number("density", 0, 1),
     crossLinks: value.crossLinks === true,
+    chains: value.chains !== false,
+    branchesCollapsed: value.branchesCollapsed !== false,
     ringGap: number("ringGap", 70, 320),
     spacing: number("spacing", 50, 240),
     curvature: number("curvature", 0, 2.5),
@@ -112,12 +139,15 @@ export function settingsFromUrl(query: URLSearchParams) {
   const value: Record<string, unknown> = {};
   for (const key of Object.keys(debugDefaults)) {
     if (!query.has(key)) continue;
-    value[key] =
-      key === "shape" || key === "tagFilter"
-        ? query.get(key)
-        : key === "labels" || key === "tags" || key === "crossLinks"
-          ? query.get(key) !== "0"
-          : Number(query.get(key));
+    value[key] = ["shape", "tagFilter", "rings", "appearance"].includes(key)
+      ? query.get(key)
+      : key === "labels" ||
+          key === "tags" ||
+          key === "crossLinks" ||
+          key === "chains" ||
+          key === "branchesCollapsed"
+        ? query.get(key) !== "0"
+        : Number(query.get(key));
   }
   return normalizeSettings(value as Partial<DebugSettings>);
 }
@@ -126,7 +156,11 @@ export function debugQuery(settings: DebugSettings) {
   for (const [key, value] of Object.entries(settings))
     query.set(
       key,
-      key === "labels" || key === "tags" || key === "crossLinks"
+      key === "labels" ||
+        key === "tags" ||
+        key === "crossLinks" ||
+        key === "chains" ||
+        key === "branchesCollapsed"
         ? value
           ? "1"
           : "0"
@@ -142,7 +176,7 @@ export function generateDebugGraph(input: DebugSettings) {
       ? 0
       : settings.shape === "single"
         ? 1
-        : Math.min(settings.count, settings.shape === "dense" ? 60 : 200);
+        : Math.min(settings.count, settings.shape === "dense" ? 60 : 2000);
   const nodes: GraphNode[] = Array.from({ length: count }, (_, index) => ({
     id: `debug-${index}`,
     title: `Node ${index + 1}`,
@@ -175,6 +209,51 @@ export function generateDebugGraph(input: DebugSettings) {
     return seed / 4294967296;
   };
   switch (settings.shape) {
+    case "research":
+    case "burst":
+    case "teams": {
+      const tips = [0];
+      let burstRoot = 0;
+      for (let i = 1; i < count; i++) {
+        if (settings.shape === "teams" && i < settings.branches) {
+          tips.push(i);
+          continue;
+        }
+        const project = Math.floor(random() * tips.length);
+        let source = tips[project];
+        if (settings.shape === "burst") {
+          if (i % 100 === 1) burstRoot = source;
+          if (i % 100 < 60) source = burstRoot;
+        } else if (settings.shape !== "teams" && random() < 0.16) {
+          source = Math.max(
+            0,
+            source - Math.floor(random() * Math.min(source, 30)),
+          );
+        }
+        add(source, i, "semantic");
+        edges.at(-1)!.relation = "parent";
+        tips[project] = i;
+        if (settings.shape !== "teams" && random() < 0.045) tips.push(i);
+        if (
+          settings.shape === "research" &&
+          tips.length > 1 &&
+          random() < 0.12
+        ) {
+          const other = tips[Math.floor(random() * tips.length)];
+          if (other !== i && other !== source) {
+            add(other, i, "semantic");
+            edges.at(-1)!.relation = "parent";
+          }
+        }
+      }
+      if (settings.crossLinks)
+        for (let i = 0; i < Math.round(count * settings.density * 4); i++) {
+          const source = 1 + Math.floor(random() * (count - 1));
+          add(source, Math.floor(random() * source), "semantic");
+          edges.at(-1)!.relation = "citation";
+        }
+      break;
+    }
     case "random": {
       for (let i = 1; i < count; i++) {
         if (random() > 0.12) add(Math.floor(random() * i), i);

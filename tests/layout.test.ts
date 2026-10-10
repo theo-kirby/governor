@@ -46,3 +46,62 @@ test("radial layout preserves every node across cycles, parallel edges, and disc
   assert.equal(JSON.stringify({ nodes, edges }), original);
   assert.equal(layoutGraph([], []).size, 0);
 });
+
+test("adaptive rings stay concentric, separated, ordered and compact around an uneven fork", () => {
+  const nodes = [node("root")];
+  const edges: GraphEdge[] = [];
+  for (let i = 0; i < 100; i++) {
+    nodes.push(node(`leaf${i}`));
+    edges.push(edge("root", `leaf${i}`));
+  }
+  for (let i = 0; i < 120; i++) {
+    nodes.push(node(`deep${i}`));
+    edges.push(edge(i ? `deep${i - 1}` : "leaf0", `deep${i}`));
+  }
+  const before = JSON.stringify({ nodes, edges });
+  const compact = layoutGraph(nodes, edges, { compact: false }),
+    classic = layoutGraph(nodes, edges, { adaptive: false });
+  const radius = (p: { x: number; y: number }) => Math.hypot(p.x, p.y);
+  const extent = (p: Map<string, { x: number; y: number }>) =>
+    Math.max(...[...p.values()].map(radius));
+  assert.ok(extent(compact) < extent(classic) / 3);
+  const ring = nodes
+    .filter((n) => n.id.startsWith("leaf"))
+    .map((n) => compact.get(n.id)!);
+  for (const p of ring) assert.ok(Math.abs(radius(p) - radius(ring[0])) < 1e-8);
+  for (let i = 0; i < ring.length; i++)
+    for (let j = i + 1; j < ring.length; j++)
+      assert.ok(
+        Math.hypot(ring[i].x - ring[j].x, ring[i].y - ring[j].y) >= 140 - 1e-8,
+      );
+  let previous = radius(ring[0]);
+  for (let i = 0; i < 120; i++) {
+    const r = radius(compact.get(`deep${i}`)!);
+    assert.ok(r - previous >= 180 - 1e-8);
+    previous = r;
+  }
+  assert.equal(JSON.stringify({ nodes, edges }), before);
+  assert.deepEqual(
+    layoutGraph(
+      nodes,
+      [
+        ...edges,
+        { ...edge("deep119", "leaf99", "semantic"), relation: "citation" },
+      ],
+      { compact: false },
+    ),
+    compact,
+  );
+});
+
+test("small graphs retain their original radial coordinates", () => {
+  const nodes = [
+    node("root"),
+    ...Array.from({ length: 30 }, (_, i) => node(`n${i}`)),
+  ];
+  const edges = nodes.slice(1).map((n) => edge("root", n.id));
+  assert.deepEqual(
+    layoutGraph(nodes, edges),
+    layoutGraph(nodes, edges, { adaptive: false }),
+  );
+});

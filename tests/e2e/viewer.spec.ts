@@ -259,7 +259,7 @@ test("debug controls switch stress cases, tune the layout, and preserve reproduc
     if (new URL(request.url()).pathname.startsWith("/api/"))
       apiRequests.push(request.url());
   });
-  await page.goto("/?debug");
+  await page.goto("/?debug&chains=0");
   await expect(
     page.getByRole("complementary", { name: "Graph debug controls" }),
   ).toBeVisible();
@@ -326,7 +326,7 @@ test("random preset supports seeds, tagged coverage, visibility, and tag spotlig
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/?debug&shape=random&count=30&seed=7&tagRate=1");
+  await page.goto("/?debug&shape=random&count=30&seed=7&tagRate=1&chains=0");
   await expect(
     page.getByRole("img", {
       name: /Debug Random structure with 30 nodes.*30 tagged nodes/,

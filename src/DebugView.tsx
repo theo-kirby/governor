@@ -42,8 +42,16 @@ export function DebugView() {
       tags: settings.tags,
       tagFilter: settings.tagFilter,
       overview: true,
+      chains: settings.chains,
+      branchesCollapsed: settings.branchesCollapsed,
+      rings: settings.rings,
+      appearance: settings.appearance,
     }),
     [
+      settings.chains,
+      settings.branchesCollapsed,
+      settings.rings,
+      settings.appearance,
       settings.ringGap,
       settings.spacing,
       settings.curvature,
@@ -137,7 +145,7 @@ export function DebugView() {
                 <input
                   type="number"
                   min="2"
-                  max={settings.shape === "dense" ? 60 : 200}
+                  max={settings.shape === "dense" ? 60 : 2000}
                   value={settings.count}
                   disabled={fixedSize}
                   onChange={(event) =>
@@ -152,16 +160,20 @@ export function DebugView() {
                   min="2"
                   max="8"
                   value={settings.branches}
-                  disabled={!["tree", "islands"].includes(settings.shape)}
+                  disabled={
+                    !["tree", "islands", "teams"].includes(settings.shape)
+                  }
                   onChange={(event) =>
                     update({ branches: Number(event.target.value) })
                   }
                 />
               </label>
             </div>
-            {["dense", "random"].includes(settings.shape) && (
+            {["dense", "random", "research", "burst", "teams"].includes(
+              settings.shape,
+            ) && (
               <>
-                {settings.shape === "random" && (
+                {settings.shape !== "dense" && (
                   <label className="debug-checkbox">
                     <input
                       type="checkbox"
@@ -197,6 +209,72 @@ export function DebugView() {
                   </button>
                 </div>
               </>
+            )}
+            <div className="debug-actions">
+              <button
+                onClick={() =>
+                  update({ shape: "research", count: 1000, crossLinks: true })
+                }
+              >
+                1,000-node research
+              </button>
+            </div>
+            <label className="debug-checkbox">
+              <input
+                type="checkbox"
+                checked={settings.chains}
+                onChange={(event) => update({ chains: event.target.checked })}
+              />{" "}
+              Collapse linear chains
+            </label>
+            <label className="debug-checkbox">
+              <input
+                type="checkbox"
+                checked={settings.branchesCollapsed}
+                onChange={(event) =>
+                  update({ branchesCollapsed: event.target.checked })
+                }
+              />{" "}
+              Nest branch summaries
+            </label>
+            <p className="debug-note">
+              Click a chain marker to expand. Focus the graph and press C to
+              collapse again.
+            </p>
+            <label className="debug-field">
+              Ring layout
+              <select
+                aria-label="Ring layout"
+                value={settings.rings}
+                onChange={(event) =>
+                  update({
+                    rings: event.target.value as DebugSettings["rings"],
+                  })
+                }
+              >
+                <option value="compact">Branch-local rings</option>
+                <option value="adaptive">Previous adaptive depth rings</option>
+                <option value="classic">Classic depth rings</option>
+              </select>
+            </label>
+            <label className="debug-checkbox">
+              <input
+                type="checkbox"
+                checked={settings.appearance === "roles"}
+                onChange={(event) =>
+                  update({
+                    appearance: event.target.checked ? "roles" : "mono",
+                  })
+                }
+              />{" "}
+              Role colors and shapes
+            </label>
+            {settings.appearance === "roles" && (
+              <p className="debug-note">
+                Amber diamonds: roots / plans. Cyan circles: forks / states.
+                Violet hexagons: merges. Gray circles: other nodes. Hypergraph
+                type takes precedence.
+              </p>
             )}
             <div className="debug-divider" />
             {slider("Ring distance", "ringGap", 70, 320, 10)}

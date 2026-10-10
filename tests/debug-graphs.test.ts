@@ -116,7 +116,7 @@ test("random topology and tags reproduce from a seed, and tag coverage does not 
   );
 });
 
-test("uneven graphs keep regular concentric rings and minimum spacing", () => {
+test("classic layout keeps regular concentric rings and minimum spacing", () => {
   for (const shape of ["tree", "random", "lopsided", "islands"] as const) {
     for (const seed of [1, 7, 24]) {
       const graph = generateDebugGraph({
@@ -125,7 +125,9 @@ test("uneven graphs keep regular concentric rings and minimum spacing", () => {
         seed,
         count: 80,
       });
-      const positions = layoutGraph(graph.nodes, graph.edges);
+      const positions = layoutGraph(graph.nodes, graph.edges, {
+        adaptive: false,
+      });
       const byId = new Map(graph.nodes.map((node) => [node.id, node]));
       const rootDepth =
         graph.nodes.filter((node) => !node.parentId).length === 1 ? 0 : 1;
@@ -186,7 +188,7 @@ test("random cross-links are opt-in and do not change the containment tree", () 
   );
 });
 
-test("random tree branches keep descendants inside their reserved sector", () => {
+test("classic tree branches keep descendants inside their reserved sector", () => {
   for (const seed of [1, 7, 24, 81]) {
     const graph = generateDebugGraph({
       ...debugDefaults,
@@ -194,7 +196,9 @@ test("random tree branches keep descendants inside their reserved sector", () =>
       count: 80,
       seed,
     });
-    const positions = layoutGraph(graph.nodes, graph.edges);
+    const positions = layoutGraph(graph.nodes, graph.edges, {
+      adaptive: false,
+    });
     const children = new Map(
       graph.nodes.map((node) => [node.id, [] as string[]]),
     );
@@ -214,4 +218,66 @@ test("random tree branches keep descendants inside their reserved sector", () =>
       assert(angle(node.id) <= Math.max(...descendantAngles) + 1e-8);
     }
   }
+});
+
+test("adaptive rings preserve branch order and spacing while using independent radii", () => {
+  for (const shape of ["tree", "random", "lopsided", "islands"] as const)
+    for (const seed of [1, 7, 24]) {
+      const graph = generateDebugGraph({
+        ...debugDefaults,
+        shape,
+        seed,
+        count: 180,
+      });
+      const positions = layoutGraph(graph.nodes, graph.edges, {
+        compact: false,
+      });
+      const reference = layoutGraph(graph.nodes, graph.edges, {
+        adaptive: false,
+      });
+      const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+      const levels = new Map<number, string[]>();
+      for (const n of graph.nodes) {
+        let depth = 0,
+          p = n;
+        while (p.parentId) {
+          depth++;
+          p = byId.get(p.parentId)!;
+        }
+        const level = levels.get(depth) || [];
+        level.push(n.id);
+        levels.set(depth, level);
+      }
+      const angle = (p: { x: number; y: number }) =>
+        (Math.atan2(p.y, p.x) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI);
+      let previous = -Infinity;
+      for (const [, ids] of [...levels].sort((a, b) => a[0] - b[0])) {
+        const r = Math.hypot(
+          positions.get(ids[0])!.x,
+          positions.get(ids[0])!.y,
+        );
+        assert.ok(r - previous >= debugDefaults.ringGap - 1e-8);
+        previous = r;
+        for (const id of ids) {
+          const p = positions.get(id)!;
+          assert.ok(Math.abs(Math.hypot(p.x, p.y) - r) < 1e-8);
+        }
+        if (ids.length < 2) continue;
+        const oldOrder = [...ids].sort(
+          (a, b) => angle(reference.get(a)!) - angle(reference.get(b)!),
+        );
+        const newOrder = [...ids].sort(
+          (a, b) => angle(positions.get(a)!) - angle(positions.get(b)!),
+        );
+        assert.deepEqual(newOrder, oldOrder);
+        for (let i = 0; i < ids.length; i++)
+          for (let j = i + 1; j < ids.length; j++) {
+            const a = positions.get(ids[i])!,
+              b = positions.get(ids[j])!;
+            assert.ok(
+              Math.hypot(a.x - b.x, a.y - b.y) >= debugDefaults.spacing - 1e-8,
+            );
+          }
+      }
+    }
 });
