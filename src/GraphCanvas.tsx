@@ -6,6 +6,7 @@ import { outwardBend } from "./edge-curves";
 import { collapseBranches } from "./collapse-branches";
 import { collapseChains } from "./collapse-chains";
 import { nodeLabel } from "./node-label";
+import { FlywheelCanvas } from "./FlywheelCanvas";
 
 export interface GraphTuning {
   ringGap: number;
@@ -48,6 +49,14 @@ type GraphProps = {
   onLayout?: (milliseconds: number) => void;
 };
 export function Graph(props: GraphProps) {
+  return new URLSearchParams(location.search).get("renderer") === "flywheel" ? (
+    <FlywheelCanvas {...props} />
+  ) : (
+    <RadialGraph {...props} />
+  );
+}
+
+function RadialGraph(props: GraphProps) {
   const [expanded, setExpanded] = useState(new Set<string>());
   const enabled =
     props.tuning?.chains ??

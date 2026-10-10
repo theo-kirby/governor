@@ -1,6 +1,6 @@
 # flywheel-viz
 
-A local, read-only Flywheel graph on a black screen. Nothing surrounds the graph:
+A local, read-only Flywheel graph viewer. The default radial view is a black screen. Nothing surrounds that view:
 no logo, sidebar, toolbar, inspector, search, legend, or visible status messages.
 An optional `?debug` mode adds a compact control panel for synthetic stress tests.
 Circular nodes, labels, and edges use only white and shades of gray. Labels sit
@@ -11,6 +11,21 @@ root at the center and containment descendants on outward rings. Cytoscape.js
 draws curved edges and handles pan, zoom, and selection. A loopback-only Fastify API reads the
 installed Flywheel CLI or reads legacy Hypergraph Markdown files directly.
 Only synthetic demo data is stored in this project.
+
+## Flywheel live-view experiment
+
+On `experiment/flywheel-live-replica`, add `renderer=flywheel` to try an independently implemented study of the [live Flywheel graph viewer](https://flywheel.paradigma.inc/):
+
+- [Cadex](http://127.0.0.1:4311/?repo=../cadex&renderer=flywheel)
+- [Lab](http://127.0.0.1:4311/?repo=../lab&renderer=flywheel)
+- [Demo](http://127.0.0.1:4311/?demo&renderer=flywheel)
+- [1,000-node research fixture](http://127.0.0.1:4311/?debug=1&shape=research&count=1000&seed=7&renderer=flywheel)
+
+This version has a charcoal canvas, dashed component orbits and generation rings, white roots, colored tag halos, pink stacked-circle run/fan summaries, thin straight edges, and zoom-dependent labels. Click a component outline to focus, stacked circles to expand, or a node for details. Drag nodes or pan; scroll to zoom. **View** contains folding, guides, citations, labels and search controls. **F** fits, **C** folds again.
+
+The replica is opt-in; the existing radial renderer and its debug controls remain available. Replica debug mode retains graph-generation controls and uses its own View controls for presentation. Source repositories stay read-only. No live website account or network connection is required to render local graphs.
+
+See [research notes, public bundle references, implementation and fidelity limits](docs/flywheel-live-study.md). It reproduces the visual conventions and core interactions, not the full production layout engine.
 
 ## Demo template
 
