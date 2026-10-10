@@ -260,3 +260,13 @@ body,
     left: 308px;
   }
 }
+
+.river-tools a {
+  color: #ccc;
+}
+.river-caption {
+  margin: 8px 0 0;
+  color: #888;
+  font-size: 11px;
+  max-width: 1000px;
+}

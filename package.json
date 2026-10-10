@@ -17,6 +17,7 @@
     "format": "prettier --write src server shared tests *.ts *.json index.html README.md"
   },
   "dependencies": {
+    "@dagrejs/dagre": "^1.1.5",
     "@fastify/static": "^10.1.5",
     "cytoscape": "^3.34.3",
     "fastify": "^5.12.5",

@@ -55,7 +55,11 @@ export function DebugView() {
     ],
   );
   useEffect(() => {
-    history.replaceState(null, "", `?${debugQuery(settings)}`);
+    history.replaceState(
+      null,
+      "",
+      `?${debugQuery(settings)}${new URLSearchParams(location.search).get("rivers") === "1" ? "&rivers=1" : ""}`,
+    );
     setCopied(false);
   }, [settings]);
   const update = (patch: Partial<DebugSettings>) =>

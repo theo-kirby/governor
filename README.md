@@ -4,6 +4,7 @@ A local, read-only Flywheel graph on a black screen. Nothing surrounds the graph
 no logo, sidebar, toolbar, inspector, search, legend, or visible status messages.
 An optional `?debug` mode adds a compact control panel for synthetic stress tests.
 An optional `&lod=1` experiment adds a multiscale radial map with tuning controls.
+An optional `&rivers=1` experiment keeps every node visible along folded research threads.
 Circular nodes, labels, and edges use only white and shades of gray. Labels sit
 below the circles; containers use slightly larger circles.
 
@@ -74,6 +75,44 @@ Cadex was checked with 1,120 nodes and 3,671 relationships (1,140 parent links
 and 2,531 citations). Large graphs start near a root at a readable scale. Press
 **F** for the full overview, then pan and zoom to explore. Citations are real
 cross-links and can make the overview dense; none are silently hidden.
+
+## Research rivers experiment
+
+Open **http://127.0.0.1:4311/?repo=../cadex&rivers=1** (or port 5173
+in development). Compare **?repo=../lab&rivers=1**, **?demo&rivers=1**, and
+**?debug=1&rivers=1&shape=chain&count=200**. `rivers=1` takes precedence over
+`lod=1`; the **Compare radial** link restores the original view.
+
+Every node stays an individual circle. Unambiguous structural continuations form
+threads; long threads wind back and forth instead of expanding global radial
+rings. Dagre lays out the contracted thread graph, supplying an ordering for
+compact rectangle placement. Original branch, merge, cycle, and self-loop edges
+are retained when the threads expand. Containment defines structure when present;
+otherwise Hypergraph parent links do, then non-citation semantic edges as a fallback.
+Citations never determine thread membership or placement.
+
+- **Fold** adjusts nodes per turn; **Ranker** compares Dagre's three ranking
+  algorithms. Both rebuild positions and fit the whole graph.
+- **Cross-links** defaults to selected-node relationships. Choose **All** to
+  draw every relationship, or **None** for structure alone. Cross-links are dashed.
+- Click a circle to highlight its thread and direct neighbors, reveal incident
+  cross-links, and read its full title below. Hover also reveals a title.
+- Scroll to zoom, drag to pan, use arrow keys or +/−, and press **F** / **0** or
+  **Fit** for overview. **Escape** clears selection. Labels appear as space allows
+  when zoomed in; all node glyphs remain in the fitted overview.
+- Experiment controls are session-only. Debug graph settings remain in the URL.
+  Late tag enrichment preserves positions and the camera.
+
+This is an experiment on `experiment/research-rivers`, not a replacement for the
+radial baseline. Packed placement sacrifices a consistent global causal direction:
+follow the paths and selection arrows. Thread rectangles are layout devices, not
+semantic groups. Inter-thread routing can cross other paths or nodes; overlapping
+parallel edges are retained but not separated. It does not yet bundle evidence
+links or implement obstacle-avoiding routing. Very large graphs can have overlapping
+screen-space glyphs; fitting all nodes does not guarantee each is distinguishable.
+Layout is synchronous and intended for exploration at Cadex scale, not a claim of
+massive-graph performance. Selection is pointer-based; keyboard controls navigate
+the camera. Source repositories remain read-only.
 
 ## Multiscale radial atlas experiment
 

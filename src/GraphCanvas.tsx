@@ -1,9 +1,12 @@
-import { useEffect, useRef } from "react";
+import { lazy, useEffect, useRef } from "react";
 import cytoscape, { type Core } from "cytoscape";
 import type { GraphNode, GraphEdge } from "../shared/types";
 import { layoutGraph, NODE_DIAMETER, CONTAINER_DIAMETER } from "./layout";
 import { outwardBend } from "./edge-curves";
 import { nodeLabel } from "./node-label";
+const RiverGraph = lazy(() =>
+  import("./RiverGraph").then((m) => ({ default: m.RiverGraph })),
+);
 import { MultiscaleGraph } from "./MultiscaleGraph";
 
 export interface GraphTuning {
@@ -269,6 +272,8 @@ export function Graph(props: Parameters<typeof RadialGraph>[0]) {
   const tuning = props.tuning || defaultTuning;
   const lod =
     tuning.lod ?? new URLSearchParams(location.search).get("lod") === "1";
+  if (new URLSearchParams(location.search).get("rivers") === "1")
+    return <RiverGraph {...props} tuning={tuning} />;
   return lod ? (
     <MultiscaleGraph
       {...props}
