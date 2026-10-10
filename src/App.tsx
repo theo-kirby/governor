@@ -69,13 +69,26 @@ function Viewer() {
         showDemo();
         return;
       }
+      const graphQuery = new URLSearchParams({ repo });
+      for (const option of ["view", "citations"]) {
+        const value = query.get(option);
+        if (value !== null) graphQuery.set(option, value);
+      }
       const data = await read<Snapshot>(
-        `/api/graph?${new URLSearchParams({ repo })}`,
+        `/api/graph?${graphQuery}`,
         controller.signal,
       );
       if (controller.signal.aborted) return;
       setSnapshot(data);
-      setStatus(data.nodes.length ? "Committed graph" : "No committed nodes");
+      setStatus(
+        data.source === "hypergraph"
+          ? "Hypergraph working-tree graph"
+          : data.nodes.length
+            ? "Committed graph"
+            : "No committed nodes",
+      );
+      for (const warning of data.warnings || [])
+        console.warn("Graph viewer:", warning);
       try {
         localStorage.setItem("flywheel-viz:repo", data.repo);
       } catch {

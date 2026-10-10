@@ -1,3 +1,6 @@
+import { access } from "node:fs/promises";
+import { join } from "node:path";
+import { hypergraphSnapshot } from "./hypergraph";
 import Fastify from "fastify";
 import { z } from "zod";
 import { FlywheelAdapter, resolveRepo, ViewerError } from "./adapter";
@@ -5,6 +8,11 @@ import { FlywheelAdapter, resolveRepo, ViewerError } from "./adapter";
 const querySchema = z.object({
   repo: z.string().trim().min(1).max(4096),
   tags: z.literal("1").optional(),
+  view: z
+    .string()
+    .regex(/^[a-zA-Z0-9_-]+$/)
+    .optional(),
+  citations: z.enum(["0", "1"]).optional(),
   head: z
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)
@@ -64,8 +72,19 @@ export function createApp(adapter = new FlywheelAdapter()) {
     defaultRepo: process.env.FLYWHEEL_REPO || "",
   }));
   app.get("/api/graph", async (request) => {
-    const { repo, tags, head } = querySchema.parse(request.query);
-    return adapter.snapshot(await resolveRepo(repo), tags === "1", head);
+    const { repo, tags, head, view, citations } = querySchema.parse(
+      request.query,
+    );
+    const root = await resolveRepo(repo);
+    let flywheel = true;
+    try {
+      await access(join(root, ".flywheel/db.sqlite"));
+    } catch {
+      flywheel = false;
+    }
+    if (!flywheel)
+      return hypergraphSnapshot(root, { view, citations: citations !== "0" });
+    return adapter.snapshot(root, tags === "1", head);
   });
   return app;
 }

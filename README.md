@@ -9,7 +9,8 @@ below the circles; containers use slightly larger circles.
 React + TypeScript + Vite provide the app shell. A radial layout places the
 root at the center and containment descendants on outward rings. Cytoscape.js
 draws curved edges and handles pan, zoom, and selection. A loopback-only Fastify API reads the
-installed Flywheel CLI. Only synthetic demo data is stored in this project.
+installed Flywheel CLI or reads legacy Hypergraph Markdown files directly.
+Only synthetic demo data is stored in this project.
 
 ## Demo template
 
@@ -37,6 +38,41 @@ Edit **`src/demo.ts`** to reuse it as a template:
 Containment edges and child/edge counts are derived automatically. Keep IDs
 unique, use existing endpoints, and keep a semantic edge's endpoints inside
 its scope. All sample names and relationships are invented; no lab data is used.
+
+## Legacy Hypergraph repositories (Cadex)
+
+Open **http://127.0.0.1:5173/?repo=../cadex**. The same `repo` parameter accepts
+repository roots or their `.hypergraph` directories. Add `&view=state` (or
+`record` / `plan`) to show one graph, and `&citations=0` for parent links only.
+For example: **http://127.0.0.1:4311/?repo=../cadex&view=state&citations=0**.
+Filtered views include only edges whose endpoints are both visible.
+No Hypergraph CLI, export,
+migration, or writes to the source repository are needed. If both formats exist,
+`.flywheel/db.sqlite` takes precedence.
+
+The adapter reads the working tree, including uncommitted edits, from `graph_dir`
+in `.hypergraph/config.yml` (default `.hypergraph/graph`). Each Markdown file
+must have YAML frontmatter with `node_id`, `slug`, `title`, and optional `parents`.
+Graph subdirectories distinguish record, state, plan, and other named views.
+All parent links are retained, including multiple parents. Parent links determine
+the radial spanning forest; citations do not move nodes between branches.
+Explicit `[rec: slug]`, `[state: slug]`, and `[plan: slug]` references become
+citation edges pointing from the citing node to the referenced node. Repeated
+citations to the same node are deduplicated. Arbitrary prose links are not parsed.
+Graph names and `Status:` lines become grayscale node tags. Markdown bodies
+are neither rendered nor returned to the browser.
+
+Missing parents, duplicate identifiers, invalid YAML, and symlinked graph files
+produce an error. Unresolved citations are omitted with a console warning.
+File lists and modification metadata are rechecked before returning; detected
+concurrent edits require a refresh. This is a best-effort working-tree read,
+not a transactional or committed snapshot. There is a 10,000-node / 2 MB-per-node
+read limit. Paths must stay within the selected repository.
+
+Cadex was checked with 1,120 nodes and 3,671 relationships (1,140 parent links
+and 2,531 citations). Large graphs start near a root at a readable scale. Press
+**F** for the full overview, then pan and zoom to explore. Citations are real
+cross-links and can make the overview dense; none are silently hidden.
 
 ## Debug playground
 
@@ -180,6 +216,7 @@ causes a fresh scan. The viewer does not create, assign, rename, or retire tags.
 
 ## Architecture
 
+- `server/hypergraph.ts`: read-only legacy Markdown/YAML adapter and citation resolution.
 - `server/adapter.ts`: allowlisted local CLI reads, JSON validation, pagination,
   and commit-head consistency guards. Node-list parent IDs supply containment;
   scopes with nonzero edge counts are read with `repo:edge:list`. Active tag
@@ -247,3 +284,5 @@ It was started after the installed npm CLI 0.2.78's `flywheel ui` failed with
 - [Flywheel repository model](https://docs.flywheel.paradigma.inc/concepts/repos)
 - [Flywheel CLI reference](https://docs.flywheel.paradigma.inc/cli)
 - [Cytoscape.js renderer](https://js.cytoscape.org/)
+
+Browser tests can target an existing production viewer with `VIEWER_URL=http://127.0.0.1:4311 npm run test:ui` when port 5173 is occupied.

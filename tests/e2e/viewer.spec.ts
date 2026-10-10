@@ -77,7 +77,11 @@ test("automatically renders only a black, grayscale radial canvas", async ({
   let graphReads = 0;
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("request", (request) => {
-    if (!request.url().startsWith("http://127.0.0.1:5173"))
+    if (
+      !request
+        .url()
+        .startsWith(process.env.VIEWER_URL || "http://127.0.0.1:5173")
+    )
       external.push(request.url());
   });
   await page.route("**/api/config", (route) =>
@@ -442,4 +446,26 @@ test("renders live tag annotations from background enrichment", async ({
   );
   await page.goto("/?repo=/synthetic/research");
   await expect(page.getByRole("img", { name: /5 tagged nodes/ })).toBeVisible();
+});
+
+test("legacy Hypergraph snapshots render without a Flywheel tag request", async ({
+  page,
+}) => {
+  let reads = 0;
+  await page.route("**/api/graph?*", (route) => {
+    reads++;
+    expect(new URL(route.request().url()).searchParams.has("tags")).toBe(false);
+    return route.fulfill({
+      json: { ...snapshot, source: "hypergraph", head: null },
+    });
+  });
+  await page.goto("/?repo=../cadex");
+  await expect(
+    page.getByRole("img", {
+      name: /Hypergraph working-tree graph with 5 nodes/,
+    }),
+  ).toBeVisible();
+  await page.getByRole("img").focus();
+  await page.keyboard.press("f");
+  expect(reads).toBe(1);
 });

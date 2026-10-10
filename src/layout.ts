@@ -21,7 +21,12 @@ export function layoutGraph(
   const children = new Map(nodes.map((node) => [node.id, [] as string[]]));
   const incoming = new Set<string>();
   const containment = edges.filter((edge) => edge.kind === "containment");
-  const hierarchy = containment.length ? containment : edges;
+  const parents = edges.filter((edge) => edge.relation === "parent");
+  const hierarchy = containment.length
+    ? containment
+    : parents.length
+      ? parents
+      : edges.filter((edge) => edge.relation !== "citation");
   for (const edge of hierarchy) {
     if (
       !ids.has(edge.source) ||

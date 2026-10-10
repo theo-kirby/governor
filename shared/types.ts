@@ -17,10 +17,13 @@ export interface GraphEdge {
   source: string;
   target: string;
   kind: "containment" | "semantic";
+  relation?: "parent" | "citation";
   scope?: string;
   content?: string | null;
 }
 export interface Snapshot {
+  source?: "flywheel" | "hypergraph";
+  warnings?: string[];
   repo: string;
   repositoryId: string;
   head: string | null;
