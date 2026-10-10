@@ -14,6 +14,7 @@ const Graph = lazy(() =>
 );
 
 export function DebugView() {
+  const isLens = new URLSearchParams(location.search).get("lens") === "1";
   const [settings, setSettings] = useState(() =>
     settingsFromUrl(new URLSearchParams(location.search)),
   );
@@ -55,7 +56,10 @@ export function DebugView() {
     ],
   );
   useEffect(() => {
-    history.replaceState(null, "", `?${debugQuery(settings)}`);
+    const query = debugQuery(settings);
+    if (new URLSearchParams(location.search).get("lens") === "1")
+      query.set("lens", "1");
+    history.replaceState(null, "", `?${query}`);
     setCopied(false);
   }, [settings]);
   const update = (patch: Partial<DebugSettings>) =>
@@ -211,56 +215,64 @@ export function DebugView() {
               </>
             )}
             <div className="debug-divider" />
-            {slider("Ring distance", "ringGap", 70, 320, 10)}
-            {slider("Node spacing", "spacing", 50, 240, 10)}
-            {slider("Curve strength", "curvature", 0, 2.5, 0.1)}
-            <label className="debug-checkbox">
-              <input
-                type="checkbox"
-                checked={settings.labels}
-                onChange={(event) => update({ labels: event.target.checked })}
-              />{" "}
-              Show labels
-            </label>
-            <label className="debug-checkbox">
-              <input
-                type="checkbox"
-                checked={settings.tags}
-                onChange={(event) => update({ tags: event.target.checked })}
-              />{" "}
-              Show tags
-            </label>
-            {!fixedSize && slider("Tagged fraction", "tagRate", 0, 1, 0.05)}
-            <label className="debug-field">
-              Spotlight tag
-              <select
-                aria-label="Spotlight tag"
-                value={settings.tagFilter}
-                onChange={(event) => update({ tagFilter: event.target.value })}
-              >
-                <option value="">All nodes</option>
-                {[
-                  ...new Set(
-                    graph.nodes.flatMap(
-                      (node) => node.tags?.map((tag) => tag.name) || [],
-                    ),
-                  ),
-                  ...(settings.tagFilter ? [settings.tagFilter] : []),
-                ]
-                  .filter((tag, index, tags) => tags.indexOf(tag) === index)
-                  .sort()
-                  .map((tag) => (
-                    <option key={tag} value={tag}>
-                      {tag}
-                    </option>
-                  ))}
-              </select>
-            </label>
+            {!isLens && (
+              <>
+                {slider("Ring distance", "ringGap", 70, 320, 10)}
+                {slider("Node spacing", "spacing", 50, 240, 10)}
+                {slider("Curve strength", "curvature", 0, 2.5, 0.1)}
+                <label className="debug-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={settings.labels}
+                    onChange={(event) =>
+                      update({ labels: event.target.checked })
+                    }
+                  />{" "}
+                  Show labels
+                </label>
+                <label className="debug-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={settings.tags}
+                    onChange={(event) => update({ tags: event.target.checked })}
+                  />{" "}
+                  Show tags
+                </label>
+                {!fixedSize && slider("Tagged fraction", "tagRate", 0, 1, 0.05)}
+                <label className="debug-field">
+                  Spotlight tag
+                  <select
+                    aria-label="Spotlight tag"
+                    value={settings.tagFilter}
+                    onChange={(event) =>
+                      update({ tagFilter: event.target.value })
+                    }
+                  >
+                    <option value="">All nodes</option>
+                    {[
+                      ...new Set(
+                        graph.nodes.flatMap(
+                          (node) => node.tags?.map((tag) => tag.name) || [],
+                        ),
+                      ),
+                      ...(settings.tagFilter ? [settings.tagFilter] : []),
+                    ]
+                      .filter((tag, index, tags) => tags.indexOf(tag) === index)
+                      .sort()
+                      .map((tag) => (
+                        <option key={tag} value={tag}>
+                          {tag}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </>
+            )}
             <div className="debug-stats" aria-live="polite">
               <span>
                 {graph.nodes.length} nodes · {graph.edges.length} edges
               </span>
-              <span>Layout {layoutMs.toFixed(1)} ms</span>
+              {!isLens && <span>Layout {layoutMs.toFixed(1)} ms</span>}
             </div>
             <div className="debug-actions">
               <button onClick={() => setRevision((previous) => previous + 1)}>

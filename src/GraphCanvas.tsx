@@ -5,6 +5,7 @@ import { layoutGraph, NODE_DIAMETER, CONTAINER_DIAMETER } from "./layout";
 import { outwardBend } from "./edge-curves";
 import { nodeLabel } from "./node-label";
 import { MultiscaleGraph } from "./MultiscaleGraph";
+import { FocusLensGraph } from "./FocusLensGraph";
 
 export interface GraphTuning {
   ringGap: number;
@@ -266,6 +267,14 @@ function RadialGraph({
 }
 
 export function Graph(props: Parameters<typeof RadialGraph>[0]) {
+  if (new URLSearchParams(location.search).get("lens") === "1")
+    return (
+      <FocusLensGraph
+        nodes={props.nodes}
+        edges={props.edges}
+        label={props.label}
+      />
+    );
   const tuning = props.tuning || defaultTuning;
   const lod =
     tuning.lod ?? new URLSearchParams(location.search).get("lod") === "1";

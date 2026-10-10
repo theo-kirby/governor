@@ -142,6 +142,43 @@ lab, balanced-tree, random, chain, and star examples for each comparison.
 Run `npm run benchmark:graphs` for repeatable synthetic layout/frontier timings;
 these measure computation, not browser frame rate.
 
+## Experiment 2: orbital focus and context
+
+The first atlas experiment is preserved at `0c2c3b0` on
+`experiment/radial-atlas`. Work on this alternative is on `experiment/focus-lens`.
+
+Open **http://127.0.0.1:4311/?repo=../cadex&lens=1** or
+**http://127.0.0.1:4311/?repo=../lab&lens=1**. Synthetic comparison:
+**http://127.0.0.1:4311/?debug=1&lod=1&lens=1&shape=tree&count=10000**.
+`lens=1` takes precedence over `lod`. The experiment uses the same grouping as
+the atlas, isolating the effect of a different navigation and presentation model.
+
+Click a group to put its contents in the center. Sibling groups along the entire
+ancestor path form an outer context ring: every source node is still accounted
+for exactly once, even deep inside a neighborhood. Click an outer group to switch
+branches directly. **Back to parent** / **Escape** moves up one level;
+**Whole graph** / **F** returns to the overview. The focus path also offers links
+to ancestors. Graph items support Tab and Enter/Space navigation.
+
+Click a real node to select it and reveal incident cross-links. Right-click a
+group, or focus it with Tab and press **T**, to trace its connections without
+opening it. **All cross-links** toggles the complete aggregated connection view;
+it starts enabled for graphs of 40 nodes or fewer. Hover shows full titles,
+tags, and group relationship counts. The comparison link opens the atlas on the
+same source. This experiment fits the entire focus/context view automatically;
+it does not use scroll zoom or free panning. Legacy geometry controls are hidden
+in synthetic focus mode.
+
+Unlike the atlas, context positions move when focus changes. The hypothesis is
+that always seeing the rest of the graph makes up for the loss of fixed map
+positions. Long chains are centered in the focus area rather than extending
+from its center. Dense context rings still suppress colliding labels, and groups
+remain spatial/structural summaries rather than discovered topics. Group titles
+are representative node titles, so consecutive ancestors can have the same title.
+The bounded visible frontier uses SVG for keyboard-accessible graph items; the
+entire source graph remains in memory. Neither experiment establishes scaling
+to millions of nodes.
+
 ## Debug playground
 
 Open **http://127.0.0.1:5173/?debug** (or port 4311 for the production server).

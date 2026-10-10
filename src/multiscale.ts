@@ -252,6 +252,10 @@ export function atlasFrontier(atlas: Atlas, zoom: number, detail = 180) {
     else for (const child of region.children) visit(child);
   };
   visit(atlas.root);
+  return summarizeFrontier(atlas, items);
+}
+
+export function summarizeFrontier(atlas: Atlas, items: Region[]) {
   const owner = new Map<string, string>();
   for (const item of items)
     for (const id of item.members) owner.set(id, item.id);

@@ -97,6 +97,58 @@ body,
   color: #fff;
   max-width: 800px;
 }
+.focus-workspace {
+  overflow: hidden;
+}
+.focus-map {
+  display: block;
+  font-family: system-ui, sans-serif;
+}
+.focus-item {
+  cursor: pointer;
+  outline: none;
+}
+.focus-item:hover circle,
+.focus-item:focus-visible circle {
+  stroke: white;
+  stroke-width: 3;
+}
+.focus-tools {
+  max-height: 180px;
+  overflow-y: auto;
+}
+.focus-tools a {
+  color: #bbb;
+}
+.focus-tools input[type="checkbox"] {
+  width: auto;
+}
+.focus-path {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.focus-path button {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #555;
+  color: #aaa;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  max-width: 170px;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.focus-path span {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 @media (min-width: 1100px) {
   .debug-workspace.panel-open .atlas-tools {
     left: 324px;
