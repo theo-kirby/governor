@@ -101,7 +101,7 @@ test("a plan component, plan claims, render --view plan, and the JSON outputs", 
     folded: [],
     claims: [
       { new: "plan", title: "plan", component: true, current: "- the plan" },
-      { new: "short", parent: "plan", title: "Short: try it", status: "open", current: "- try it", cites: [r.slug] },
+      { new: "short", parent: "plan", title: "Short: try it", status: "open", current: "- try it\n- then measure it", cites: [r.slug] },
     ],
   };
   writeFileSync(join(dir, "plan.json"), JSON.stringify(plan));
@@ -112,6 +112,7 @@ test("a plan component, plan claims, render --view plan, and the JSON outputs", 
   assert.equal(c.ok, true, JSON.stringify(c.findings));
   const md = (await gov(dir, "render", "--view", "plan")).out;
   assert.match(md, /^- \[open\] \*\*Short: try it\*\*/m);
+  assert.match(md, /^  - then measure it$/m);
   assert.doesNotMatch(md, /Unfolded records/);
   const log = JSON.parse(execFileSync("flywheel", ["repo:log", "--format=json"], { cwd: dir }).toString());
   assert.ok(log.commits.some((x: { message: string }) => x.message.startsWith("governor fold (plan):")));

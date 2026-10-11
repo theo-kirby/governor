@@ -58,6 +58,11 @@ export function renderState(s: GraphSnapshot, opts: { title?: string; view?: "st
       const c = cites(s, n);
       const status = n.status ? `[${n.status}] ` : "";
       lines.push(`${"  ".repeat(depth)}- ${status}**${n.title}** (\`${label(n)}\`) — ${firstLine(section(n.content, "Current"), 160)}${c.length ? ` [${c.length} record(s)]` : ""}`);
+      if (plan) {
+        // a plan claim is short and read whole: its full `## Current`, indented under it
+        const body = section(n.content, "Current").trim().split("\n").slice(1);
+        for (const l of body) if (l.trim()) lines.push(`${"  ".repeat(depth + 1)}${l.trimEnd()}`);
+      }
       walk(n.id, depth + 1);
     }
   };
