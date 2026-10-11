@@ -10,13 +10,12 @@ import {
   type Shape,
 } from "./debug-graphs";
 const Graph = lazy(() =>
-  import("./GraphCanvas").then((module) => ({ default: module.Graph })),
+  import("./FlywheelCanvas").then((module) => ({
+    default: module.FlywheelCanvas,
+  })),
 );
 
 export function DebugView() {
-  const [renderer] = useState(() =>
-    new URLSearchParams(location.search).get("renderer"),
-  );
   const [settings, setSettings] = useState(() =>
     settingsFromUrl(new URLSearchParams(location.search)),
   );
@@ -36,41 +35,8 @@ export function DebugView() {
       settings.tagRate,
     ],
   );
-  const tuning = useMemo(
-    () => ({
-      ringGap: settings.ringGap,
-      spacing: settings.spacing,
-      curvature: settings.curvature,
-      labels: settings.labels,
-      tags: settings.tags,
-      tagFilter: settings.tagFilter,
-      overview: true,
-      chains: settings.chains,
-      branchesCollapsed: settings.branchesCollapsed,
-      rings: settings.rings,
-      appearance: settings.appearance,
-    }),
-    [
-      settings.chains,
-      settings.branchesCollapsed,
-      settings.rings,
-      settings.appearance,
-      settings.ringGap,
-      settings.spacing,
-      settings.curvature,
-      settings.labels,
-      settings.tags,
-      settings.tagFilter,
-    ],
-  );
   useEffect(() => {
     const query = debugQuery(settings);
-    if (renderer) query.set("renderer", renderer);
-    const current = new URLSearchParams(location.search);
-    for (const key of ["ringStyle", "ringInk", "bandWidth"]) {
-      const value = current.get(key);
-      if (value !== null) query.set(key, value);
-    }
     history.replaceState(null, "", `?${query}`);
     setCopied(false);
   }, [settings]);
@@ -79,7 +45,7 @@ export function DebugView() {
   const fixedSize = ["demo", "empty", "single"].includes(settings.shape);
   const slider = (
     label: string,
-    key: "ringGap" | "spacing" | "curvature" | "density" | "tagRate",
+    key: "density" | "tagRate",
     min: number,
     max: number,
     step: number,
@@ -111,7 +77,6 @@ export function DebugView() {
           nodes={graph.nodes}
           edges={graph.edges}
           label={`Debug ${shapes[settings.shape][0]}`}
-          tuning={tuning}
           onLayout={setLayoutMs}
         />
       </Suspense>
@@ -229,130 +194,10 @@ export function DebugView() {
                 1,000-node research
               </button>
             </div>
-            {renderer !== "flywheel" ? (
-              <>
-                <label className="debug-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings.chains}
-                    onChange={(event) =>
-                      update({ chains: event.target.checked })
-                    }
-                  />{" "}
-                  Collapse linear chains
-                </label>
-                <label className="debug-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings.branchesCollapsed}
-                    onChange={(event) =>
-                      update({ branchesCollapsed: event.target.checked })
-                    }
-                  />{" "}
-                  Nest branch summaries
-                </label>
-                <p className="debug-note">
-                  Click a chain marker to expand. Focus the graph and press C to
-                  collapse again.
-                </p>
-                <label className="debug-field">
-                  Ring layout
-                  <select
-                    aria-label="Ring layout"
-                    value={settings.rings}
-                    onChange={(event) =>
-                      update({
-                        rings: event.target.value as DebugSettings["rings"],
-                      })
-                    }
-                  >
-                    <option value="compact">Branch-local rings</option>
-                    <option value="adaptive">
-                      Previous adaptive depth rings
-                    </option>
-                    <option value="classic">Classic depth rings</option>
-                  </select>
-                </label>
-                <label className="debug-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings.appearance === "roles"}
-                    onChange={(event) =>
-                      update({
-                        appearance: event.target.checked ? "roles" : "mono",
-                      })
-                    }
-                  />{" "}
-                  Role colors and shapes
-                </label>
-                {settings.appearance === "roles" && (
-                  <p className="debug-note">
-                    Amber diamonds: roots / plans. Cyan circles: forks / states.
-                    Violet hexagons: merges. Gray circles: other nodes.
-                    Hypergraph type takes precedence.
-                  </p>
-                )}
-                <div className="debug-divider" />
-                {slider("Ring distance", "ringGap", 70, 320, 10)}
-                {slider("Node spacing", "spacing", 50, 240, 10)}
-                {slider("Curve strength", "curvature", 0, 2.5, 0.1)}
-                <label className="debug-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings.labels}
-                    onChange={(event) =>
-                      update({ labels: event.target.checked })
-                    }
-                  />{" "}
-                  Show labels
-                </label>
-                <label className="debug-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={settings.tags}
-                    onChange={(event) => update({ tags: event.target.checked })}
-                  />{" "}
-                  Show tags
-                </label>
-              </>
-            ) : (
-              <p className="debug-note">
-                Flywheel study: click stacked circles to expand; press C to fold
-                and F to fit.
-              </p>
-            )}
+            <p className="debug-note">
+              Click stacked circles to expand; press C to fold and F to fit.
+            </p>
             {!fixedSize && slider("Tagged fraction", "tagRate", 0, 1, 0.05)}
-            {renderer !== "flywheel" && (
-              <>
-                <label className="debug-field">
-                  Spotlight tag
-                  <select
-                    aria-label="Spotlight tag"
-                    value={settings.tagFilter}
-                    onChange={(event) =>
-                      update({ tagFilter: event.target.value })
-                    }
-                  >
-                    <option value="">All nodes</option>
-                    {[
-                      ...new Set(
-                        graph.nodes.flatMap(
-                          (node) => node.tags?.map((tag) => tag.name) || [],
-                        ),
-                      ),
-                      ...(settings.tagFilter ? [settings.tagFilter] : []),
-                    ]
-                      .filter((tag, index, tags) => tags.indexOf(tag) === index)
-                      .sort()
-                      .map((tag) => (
-                        <option key={tag} value={tag}>
-                          {tag}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              </>
-            )}
             <div className="debug-stats" aria-live="polite">
               <span>
                 {graph.nodes.length} nodes · {graph.edges.length} edges

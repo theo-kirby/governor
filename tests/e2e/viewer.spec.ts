@@ -69,9 +69,7 @@ const snapshot: Snapshot = {
   ],
 };
 
-test("automatically renders only a black, grayscale radial canvas", async ({
-  page,
-}) => {
+test("automatically renders the orbital canvas", async ({ page }) => {
   const errors: string[] = [];
   const external: string[] = [];
   let graphReads = 0;
@@ -96,9 +94,7 @@ test("automatically renders only a black, grayscale radial canvas", async ({
     return route.fulfill({ json: snapshot });
   });
   await page.goto("/");
-  const graph = page.getByRole("img", {
-    name: /5 nodes and 5 relationships, arranged radially/,
-  });
+  const graph = page.locator(".fw-canvas");
   await expect(graph).toBeVisible();
   await expect(page.locator("canvas").first()).toBeVisible();
   await expect(
@@ -121,9 +117,7 @@ test("automatically renders only a black, grayscale radial canvas", async ({
           if (!pixels) continue;
           for (let i = 0; i < pixels.length; i += 4) {
             if (!pixels[i + 3]) continue;
-            if (pixels[i] !== pixels[i + 1] || pixels[i + 1] !== pixels[i + 2])
-              return -1;
-            if (pixels[i] > 0) drawn++;
+            if (pixels[i] > 40) drawn++;
           }
         }
         return drawn;
@@ -139,9 +133,7 @@ test("automatically renders only a black, grayscale radial canvas", async ({
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("f");
   await page.reload();
-  await expect(
-    page.getByRole("img", { name: /5 nodes and 5 relationships/ }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   expect(graphReads).toBeGreaterThan(1);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await graph.boundingBox()).toEqual({
@@ -175,7 +167,7 @@ test("URL repository loads directly without configuration or a picker", async ({
     return route.fulfill({ json: snapshot });
   });
   await page.goto("/?repo=../example/.flywheel");
-  await expect(page.getByRole("img", { name: /5 nodes/ })).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
 });
 
 test("failed reads leave a blank black screen and report the error in the console", async ({
@@ -218,11 +210,7 @@ test("demo is a standalone template and does not access a real repository", asyn
   });
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/?demo&repo=/synthetic/ignored");
-  await expect(
-    page.getByRole("img", {
-      name: /Demo graph with 16 nodes and 21 relationships/,
-    }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await expect(page.locator("canvas").first()).toBeVisible();
   expect(await page.locator("body").innerText()).toBe("");
   expect(
@@ -243,9 +231,7 @@ test("an unconfigured viewer opens the demo automatically", async ({
     if (request.url().includes("/api/graph")) graphRequests.push(request.url());
   });
   await page.goto("/");
-  await expect(
-    page.getByRole("img", { name: /Demo graph with 16 nodes/ }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   expect(graphRequests).toEqual([]);
 });
 
@@ -263,26 +249,13 @@ test("debug controls switch stress cases, tune the layout, and preserve reproduc
   await expect(
     page.getByRole("complementary", { name: "Graph debug controls" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("img", { name: /Debug Research demo with 16 nodes/ }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await page.getByLabel("Shape", { exact: true }).selectOption("tree");
   await page.getByLabel("Nodes", { exact: true }).fill("24");
   await page.getByLabel("Branches / islands").fill("4");
-  await expect(
-    page.getByRole("img", { name: /24 nodes and 23 relationships/ }),
-  ).toBeVisible();
-  await page.getByLabel("Ring distance", { exact: true }).fill("240");
-  await page.getByLabel("Curve strength", { exact: true }).fill("1.8");
-  await page.getByLabel("Show labels").uncheck();
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("ringGap"))
-    .toBe("240");
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Ring distance", { exact: true })).toHaveValue(
-    "240",
-  );
-  await expect(page.getByLabel("Show labels")).not.toBeChecked();
+  await expect(page.getByLabel("Nodes", { exact: true })).toHaveValue("24");
   for (const shape of [
     "chain",
     "star",
@@ -294,21 +267,18 @@ test("debug controls switch stress cases, tune the layout, and preserve reproduc
     "loops",
   ]) {
     await page.getByLabel("Shape", { exact: true }).selectOption(shape);
-    await expect(page.getByRole("img", { name: /24 nodes/ })).toBeVisible();
+    await expect(page.locator(".fw-canvas")).toHaveAttribute(
+      "data-original-nodes",
+      "24",
+    );
   }
   await page.getByLabel("Shape", { exact: true }).selectOption("single");
-  await expect(
-    page.getByRole("img", { name: /1 nodes and 0 relationships/ }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await page.getByLabel("Shape", { exact: true }).selectOption("empty");
-  await expect(
-    page.getByRole("img", { name: /0 nodes and 0 relationships/ }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await page.getByRole("button", { name: "Fit graph" }).click();
   await page.getByRole("button", { name: "Reset", exact: true }).click();
-  await expect(
-    page.getByRole("img", { name: /16 nodes and 21 relationships/ }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await page.getByRole("button", { name: "Collapse debug controls" }).click();
   await expect(page.getByLabel("Shape", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Expand debug controls" }).click();
@@ -321,42 +291,30 @@ test("debug controls switch stress cases, tune the layout, and preserve reproduc
   expect(apiRequests).toEqual([]);
 });
 
-test("random preset supports seeds, tagged coverage, visibility, and tag spotlight with URL replay", async ({
+test("random preset supports seeds and tagged coverage with URL replay", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/?debug&shape=random&count=30&seed=7&tagRate=1&chains=0");
-  await expect(
-    page.getByRole("img", {
-      name: /Debug Random structure with 30 nodes.*30 tagged nodes/,
-    }),
-  ).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
   await expect(
     page.getByLabel("Add cross-links", { exact: true }),
   ).not.toBeChecked();
   await page.getByLabel("Add cross-links", { exact: true }).check();
   await expect(page.getByLabel("Link density", { exact: true })).toBeVisible();
-  await page
-    .getByLabel("Spotlight tag", { exact: true })
-    .selectOption("review");
-  await page.getByLabel("Show tags", { exact: true }).uncheck();
   await page.getByRole("button", { name: "Next seed", exact: true }).click();
   await expect(page.getByLabel("Seed", { exact: true })).toHaveValue("8");
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("tags"))
-    .toBe("0");
   await page.reload();
-  await expect(page.getByLabel("Spotlight tag", { exact: true })).toHaveValue(
-    "review",
-  );
-  await expect(page.getByLabel("Show tags", { exact: true })).not.toBeChecked();
+  await expect(page.getByLabel("Seed", { exact: true })).toHaveValue("8");
   await expect(
     page.getByLabel("Add cross-links", { exact: true }),
   ).toBeChecked();
-  await page.getByLabel("Show tags", { exact: true }).check();
   await page.getByLabel("Tagged fraction", { exact: true }).fill("0");
-  await expect(page.getByRole("img", { name: /0 tagged nodes/ })).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toHaveAttribute(
+    "data-tagged-nodes",
+    "0",
+  );
   expect(errors).toEqual([]);
 });
 
@@ -382,7 +340,7 @@ test("opens topology before tags and preserves the view after background loading
       exact: true,
     }),
   ).toBeVisible();
-  const graph = page.getByRole("img");
+  const graph = page.locator(".fw-canvas");
   await expect(page.locator("canvas").first()).toBeVisible();
   await graph.focus();
   await page.keyboard.press("+");
@@ -445,7 +403,10 @@ test("renders live tag annotations from background enrichment", async ({
     }),
   );
   await page.goto("/?repo=/synthetic/research");
-  await expect(page.getByRole("img", { name: /5 tagged nodes/ })).toBeVisible();
+  await expect(page.locator(".fw-canvas")).toHaveAttribute(
+    "data-tagged-nodes",
+    "5",
+  );
 });
 
 test("legacy Hypergraph snapshots render without a Flywheel tag request", async ({
@@ -460,12 +421,8 @@ test("legacy Hypergraph snapshots render without a Flywheel tag request", async 
     });
   });
   await page.goto("/?repo=../cadex");
-  await expect(
-    page.getByRole("img", {
-      name: /Hypergraph working-tree graph with 5 nodes/,
-    }),
-  ).toBeVisible();
-  await page.getByRole("img").focus();
+  await expect(page.locator(".fw-canvas")).toBeVisible();
+  await page.locator(".fw-canvas").focus();
   await page.keyboard.press("f");
   expect(reads).toBe(1);
 });

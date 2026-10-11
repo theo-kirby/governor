@@ -9,37 +9,6 @@ const tagColor = (id: string) => {
   for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
   return `hsl(${hash % 360} 60% 58%)`;
 };
-const ringStyles = [
-  "arcs",
-  "ticks",
-  "bands",
-  "mist",
-  "ribbons",
-  "terraces",
-  "soft",
-  "dotted",
-  "dashed",
-  "none",
-] as const;
-type RingStyle = (typeof ringStyles)[number];
-const styleNames: Record<RingStyle, string> = {
-  arcs: "Occupied arcs",
-  ticks: "Orbital ticks",
-  bands: "Soft bands",
-  mist: "Mist bands",
-  ribbons: "Ribbon edges",
-  terraces: "Terraced bands",
-  soft: "Fine solid rings",
-  dotted: "Dotted rings",
-  dashed: "Dashed rings",
-  none: "No guides",
-};
-const bandStyles = new Set<RingStyle>(["bands", "mist", "ribbons", "terraces"]);
-const readLevel = (key: string, fallback: number, min: number, max: number) => {
-  const raw = new URLSearchParams(location.search).get(key);
-  const value = raw === null ? NaN : Number(raw);
-  return Number.isFinite(value) ? clamp(value, min, max) : fallback;
-};
 type Camera = Point & { scale: number };
 type Props = {
   nodes: GraphNode[];
@@ -48,33 +17,21 @@ type Props = {
   onLayout?: (ms: number) => void;
 };
 
-export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
+export function FlywheelCanvas({
+  nodes,
+  edges,
+  label = "Graph",
+  onLayout,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const previousView = useRef<{
+    layoutKey: string;
+    camera: Camera;
+    positions: Map<string, Point>;
+    width: number;
+    height: number;
+  } | null>(null);
   const [expanded, setExpanded] = useState(new Set<string>());
-  const [ringStyle, setRingStyle] = useState<RingStyle>(() => {
-    const requested = new URLSearchParams(location.search).get("ringStyle");
-    return ringStyles.includes(requested as RingStyle)
-      ? (requested as RingStyle)
-      : "dotted";
-  });
-  const [panelOpen, setPanelOpen] = useState(true);
-  const [ink, setInk] = useState(() => readLevel("ringInk", 1, 0.25, 3));
-  const [bandWidth, setBandWidth] = useState(() =>
-    readLevel("bandWidth", 1, 0.4, 2),
-  );
-  const chooseStyle = (style: RingStyle) => {
-    const url = new URL(location.href);
-    url.searchParams.set("ringStyle", style);
-    history.replaceState(null, "", url.pathname + url.search + url.hash);
-    setRingStyle(style);
-  };
-  const changeLevel = (key: "ringInk" | "bandWidth", value: number) => {
-    const url = new URL(location.href);
-    url.searchParams.set(key, String(value));
-    history.replaceState(null, "", url.pathname + url.search + url.hash);
-    if (key === "ringInk") setInk(value);
-    else setBandWidth(value);
-  };
   const [selected, setSelected] = useState<string | null>(null);
   const scene = useMemo(() => {
     const start = performance.now();
@@ -86,10 +43,10 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     };
   }, [nodes, edges, expanded]);
   useEffect(() => onLayout?.(scene.milliseconds), [scene, onLayout]);
-  const options = useRef({ selected, ringStyle, ink, bandWidth });
-  options.current = { selected, ringStyle, ink, bandWidth };
+  const options = useRef({ selected });
+  options.current = { selected };
   const redraw = useRef(() => {});
-  useEffect(() => redraw.current(), [selected, ringStyle, ink, bandWidth]);
+  useEffect(() => redraw.current(), [selected]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -103,21 +60,12 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     const positions = new Map(
       [...scene.positions].map(([id, p]) => [id, { ...p }]),
     );
+    const layoutKey = JSON.stringify([...scene.positions]);
+    const savedView = previousView.current;
+    const restoreView = savedView?.layoutKey === layoutKey ? savedView : null;
+    if (restoreView)
+      for (const [id, p] of restoreView.positions) positions.set(id, { ...p });
     const byId = new Map(scene.nodes.map((n) => [n.id, n]));
-    // Membership follows the layout's generation; dragging only changes its angle.
-    const occupied = new Map(
-      scene.components.map((c) => {
-        const rings = new Map(c.rings.map((r) => [r, [] as string[]]));
-        for (const n of c.nodes) {
-          const p = positions.get(n.id)!;
-          const radius = Math.hypot(p.x - c.center.x, p.y - c.center.y);
-          const r = c.rings.find((r) => Math.abs(r - radius) < 0.01);
-          if (r !== undefined) rings.get(r)!.push(n.id);
-        }
-        return [c.id, rings] as const;
-      }),
-    );
-
     const roots = new Set(scene.components.flatMap((c) => c.roots));
     const adjacency = new Map(
       scene.nodes.map((n) => [n.id, new Set<string>()]),
@@ -199,219 +147,24 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         )
           return;
         ctx.strokeStyle = color;
-        ctx.globalAlpha = clamp(alpha * opts.ink, 0, 1);
+        ctx.globalAlpha = alpha;
         ctx.lineWidth = strokeWidth;
         ctx.setLineDash(dash);
         ctx.beginPath();
         ctx.arc(p.x, p.y, r * scale, start, end);
         ctx.stroke();
       };
-      if (opts.ringStyle !== "none") {
-        const style = opts.ringStyle;
-        const dash =
-          style === "dotted" ? [1, 7] : style === "dashed" ? [4, 10] : [];
-        const opacity =
-          style === "soft" ? 0.14 : style === "dotted" ? 0.26 : 0.2;
-        for (const r of scene.orbits)
-          ring({ x: 0, y: 0 }, r, "#999999", [3, 16], 0.22);
-        for (const c of scene.components) {
-          if (c.radius * scale > 28) {
-            // Closely packed generations should read as guides, not a striped disk.
-            for (let i = 0; i < c.rings.length; i++) {
-              const r = c.rings[i];
-              const separation = (r - (c.rings[i - 1] ?? 0)) * scale;
-              const densityFade = clamp(separation / 10, 0.35, 1);
-              if (
-                style === "arcs" ||
-                style === "ticks" ||
-                bandStyles.has(style)
-              ) {
-                const tau = Math.PI * 2;
-                const angles = (occupied.get(c.id)?.get(r) ?? []).map((id) => {
-                  const p = positions.get(id)!;
-                  return (
-                    (Math.atan2(p.y - c.center.y, p.x - c.center.x) + tau) % tau
-                  );
-                });
-                const half = Math.min(
-                  0.24,
-                  Math.max(0.025, (36 * scale + 8) / (r * scale)),
-                );
-                if (style === "ticks") {
-                  const p = point(c.center),
-                    radius = r * scale;
-                  ctx.setLineDash([]);
-                  ctx.lineWidth = 0.8;
-                  ctx.strokeStyle = "#aaaaaa";
-                  ctx.globalAlpha = clamp(0.3 * densityFade * opts.ink, 0, 1);
-                  for (const angle of angles)
-                    for (const a of [angle - half, angle + half]) {
-                      const x = p.x + Math.cos(a) * radius,
-                        y = p.y + Math.sin(a) * radius;
-                      if (x < -8 || y < -8 || x > width + 8 || y > height + 8)
-                        continue;
-                      ctx.beginPath();
-                      ctx.moveTo(x - Math.cos(a) * 2.5, y - Math.sin(a) * 2.5);
-                      ctx.lineTo(x + Math.cos(a) * 2.5, y + Math.sin(a) * 2.5);
-                      ctx.stroke();
-                    }
-                } else {
-                  // Merge occupied intervals and split at the seam, leaving empty sectors open.
-                  const intervals: number[][] = [];
-                  for (const angle of angles) {
-                    const a = angle - half,
-                      b = angle + half;
-                    if (a < 0) intervals.push([a + tau, tau], [0, b]);
-                    else if (b > tau) intervals.push([a, tau], [0, b - tau]);
-                    else intervals.push([a, b]);
-                  }
-                  intervals.sort((a, b) => a[0] - b[0]);
-                  const merged: number[][] = [];
-                  for (const interval of intervals) {
-                    const last = merged.at(-1);
-                    if (last && interval[0] <= last[1])
-                      last[1] = Math.max(last[1], interval[1]);
-                    else merged.push([...interval]);
-                  }
-                  for (const [a, b] of merged) {
-                    const band =
-                      Math.min(24, separation * 0.7) * opts.bandWidth;
-                    if (style === "bands") {
-                      ring(
-                        c.center,
-                        r,
-                        "#bbbbbb",
-                        [],
-                        0.035 * densityFade,
-                        band + 5,
-                        a,
-                        b,
-                      );
-                      ring(
-                        c.center,
-                        r,
-                        "#bbbbbb",
-                        [],
-                        0.06 * densityFade,
-                        band,
-                        a,
-                        b,
-                      );
-                    } else if (style === "mist") {
-                      // Layered translucent strokes create feathered edges without canvas blur.
-                      for (let layer = 5; layer >= 1; layer--)
-                        ring(
-                          c.center,
-                          r,
-                          "#cccccc",
-                          [],
-                          0.018 * densityFade,
-                          band * (0.4 + layer * 0.35),
-                          a,
-                          b,
-                        );
-                    } else if (style === "ribbons") {
-                      ring(
-                        c.center,
-                        r,
-                        "#aaaaaa",
-                        [],
-                        0.045 * densityFade,
-                        band,
-                        a,
-                        b,
-                      );
-                      const inset = band / (2 * scale);
-                      ring(
-                        c.center,
-                        Math.max(0.1, r - inset),
-                        "#aaaaaa",
-                        [],
-                        0.24 * densityFade,
-                        0.65,
-                        a,
-                        b,
-                      );
-                      ring(
-                        c.center,
-                        r + inset,
-                        "#aaaaaa",
-                        [],
-                        0.24 * densityFade,
-                        0.65,
-                        a,
-                        b,
-                      );
-                    } else if (style === "terraces") {
-                      // Alternate broad shelves and hairlines to distinguish neighboring generations.
-                      const shelf =
-                        Math.min(36, separation * 0.9) * opts.bandWidth;
-                      const center = Math.max(0.1, r - shelf / (2 * scale));
-                      ring(
-                        c.center,
-                        center,
-                        "#bbbbbb",
-                        [],
-                        (i % 2 ? 0.035 : 0.085) * densityFade,
-                        shelf,
-                        a,
-                        b,
-                      );
-                      ring(
-                        c.center,
-                        r,
-                        "#bbbbbb",
-                        [],
-                        0.2 * densityFade,
-                        0.7,
-                        a,
-                        b,
-                      );
-                    }
-                    ring(
-                      c.center,
-                      r,
-                      "#aaaaaa",
-                      [],
-                      (style === "arcs" ? 0.3 : style === "bands" ? 0.12 : 0) *
-                        densityFade,
-                      0.75,
-                      a,
-                      b,
-                    );
-                  }
-                }
-              } else {
-                ring(
-                  c.center,
-                  r,
-                  "#aaaaaa",
-                  dash,
-                  opacity * densityFade,
-                  style === "soft" ? 0.65 : 0.8,
-                );
-              }
-            }
-            if (
-              style === "arcs" ||
-              style === "ticks" ||
-              bandStyles.has(style)
-            ) {
-              // Four quiet brackets suggest the component boundary without enclosing it.
-              for (let i = 0; i < 4; i++)
-                ring(
-                  c.center,
-                  c.radius,
-                  "#aaaaaa",
-                  [],
-                  0.24,
-                  0.8,
-                  (i * Math.PI) / 2 - 0.09,
-                  (i * Math.PI) / 2 + 0.09,
-                );
-            } else ring(c.center, c.radius, "#aaaaaa", [], 0.3, 0.85);
-          }
+      for (const r of scene.orbits)
+        ring({ x: 0, y: 0 }, r, "#999999", [3, 16], 0.22);
+      for (const c of scene.components) {
+        if (c.radius * scale <= 28) continue;
+        for (let i = 0; i < c.rings.length; i++) {
+          const r = c.rings[i];
+          const separation = (r - (c.rings[i - 1] ?? 0)) * scale;
+          const densityFade = clamp(separation / 10, 0.35, 1);
+          ring(c.center, r, "#aaaaaa", [1, 7], 0.26 * densityFade, 0.8);
         }
+        ring(c.center, c.radius, "#aaaaaa", [], 0.3, 0.85);
       }
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
@@ -611,9 +364,7 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
       canvas.dataset.groups = String(scene.groups.size);
       canvas.dataset.components = String(scene.components.length);
       canvas.dataset.zoom = String(scale);
-      canvas.dataset.ringStyle = opts.ringStyle;
-      canvas.dataset.ringInk = String(opts.ink);
-      canvas.dataset.bandWidth = String(opts.bandWidth);
+      canvas.dataset.ringStyle = "dotted";
     }
     function invalidate() {
       if (!frame && !disposed) frame = requestAnimationFrame(draw);
@@ -621,12 +372,22 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     redraw.current = invalidate;
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
+      if (width === rect.width && height === rect.height) return;
+      const initialResize = width === 1 && height === 1;
       width = rect.width;
       height = rect.height;
       const dpr = Math.min(devicePixelRatio || 1, 2);
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
-      fit();
+      if (
+        initialResize &&
+        restoreView &&
+        restoreView.width === width &&
+        restoreView.height === height
+      ) {
+        camera = { ...restoreView.camera };
+        invalidate();
+      } else fit();
     };
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
@@ -745,16 +506,6 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         e.preventDefault();
       } else if (e.key === "Escape") {
         setSelected(null);
-      } else if (e.key.toLowerCase() === "r") {
-        const next =
-          ringStyles[
-            (ringStyles.indexOf(options.current.ringStyle) + 1) %
-              ringStyles.length
-          ];
-        const url = new URL(location.href);
-        url.searchParams.set("ringStyle", next);
-        history.replaceState(null, "", url.pathname + url.search + url.hash);
-        setRingStyle(next);
       } else if (e.key === "c") {
         setExpanded(new Set());
       } else if (e.key === "+" || e.key === "=") zoomAt(1.25);
@@ -771,6 +522,7 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     canvas.addEventListener("wheel", wheel, { passive: false });
     window.addEventListener("keydown", key);
     return () => {
+      previousView.current = { layoutKey, camera, positions, width, height };
       disposed = true;
       observer.disconnect();
       cancelAnimationFrame(frame);
@@ -790,61 +542,9 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         ref={canvasRef}
         className="fw-canvas"
         tabIndex={0}
-        aria-label={`Interactive orbital graph. ${nodes.length} source nodes. Scroll to zoom, drag to pan or move nodes. F fits, C folds, R cycles ring styles, Escape clears selection.`}
+        data-tagged-nodes={nodes.filter((node) => node.tags?.length).length}
+        aria-label={`${label}. Interactive orbital graph. ${nodes.length} source nodes. Scroll to zoom, drag to pan or move nodes. F fits, C folds, Escape clears selection.`}
       />
-      <aside className="fw-ring-panel" aria-label="Ring style debug controls">
-        <button
-          className="fw-ring-heading"
-          aria-expanded={panelOpen}
-          onClick={() => setPanelOpen(!panelOpen)}
-        >
-          <span>RING LAB</span>
-          <span>{panelOpen ? "−" : "+"}</span>
-        </button>
-        {panelOpen && (
-          <div className="fw-ring-settings">
-            <select
-              aria-label="Ring style"
-              value={ringStyle}
-              onChange={(e) => chooseStyle(e.target.value as RingStyle)}
-            >
-              {ringStyles.map((style) => (
-                <option key={style} value={style}>
-                  {styleNames[style]}
-                </option>
-              ))}
-            </select>
-            <label>
-              Ink <output>{ink.toFixed(2)}×</output>
-              <input
-                aria-label="Ring ink"
-                type="range"
-                min="0.25"
-                max="3"
-                step="0.05"
-                value={ink}
-                disabled={ringStyle === "none"}
-                onChange={(e) => changeLevel("ringInk", Number(e.target.value))}
-              />
-            </label>
-            <label>
-              Band width <output>{bandWidth.toFixed(1)}×</output>
-              <input
-                aria-label="Band width"
-                type="range"
-                min="0.4"
-                max="2"
-                step="0.1"
-                value={bandWidth}
-                disabled={!bandStyles.has(ringStyle)}
-                onChange={(e) =>
-                  changeLevel("bandWidth", Number(e.target.value))
-                }
-              />
-            </label>
-          </div>
-        )}
-      </aside>
     </section>
   );
 }

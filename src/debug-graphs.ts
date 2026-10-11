@@ -58,41 +58,21 @@ export const shapes = {
 export type Shape = keyof typeof shapes;
 export interface DebugSettings {
   shape: Shape;
-  rings: "compact" | "adaptive" | "classic";
-  appearance: "mono" | "roles";
   count: number;
   branches: number;
   seed: number;
   density: number;
   crossLinks: boolean;
-  chains: boolean;
-  branchesCollapsed: boolean;
-  ringGap: number;
-  spacing: number;
-  curvature: number;
-  labels: boolean;
-  tags: boolean;
   tagRate: number;
-  tagFilter: string;
 }
 export const debugDefaults: DebugSettings = {
   shape: "demo",
-  rings: "classic",
-  appearance: "mono",
   count: 36,
   branches: 3,
   seed: 1,
   density: 0.2,
   crossLinks: false,
-  chains: true,
-  branchesCollapsed: true,
-  ringGap: 180,
-  spacing: 140,
-  curvature: 1,
-  labels: true,
-  tags: true,
   tagRate: 0.45,
-  tagFilter: "",
 };
 export function normalizeSettings(
   value: Partial<DebugSettings>,
@@ -113,59 +93,31 @@ export function normalizeSettings(
   return {
     shape:
       value.shape && Object.hasOwn(shapes, value.shape) ? value.shape : "demo",
-    rings:
-      value.rings === "compact" || value.rings === "adaptive"
-        ? value.rings
-        : "classic",
-    appearance: value.appearance === "roles" ? "roles" : "mono",
     count: number("count", 2, value.shape === "dense" ? 60 : 2000, true),
     branches: number("branches", 2, 8, true),
     seed: number("seed", 1, 99999, true),
     density: number("density", 0, 1),
     crossLinks: value.crossLinks === true,
-    chains: value.chains !== false,
-    branchesCollapsed: value.branchesCollapsed !== false,
-    ringGap: number("ringGap", 70, 320),
-    spacing: number("spacing", 50, 240),
-    curvature: number("curvature", 0, 2.5),
-    labels: value.labels !== false,
-    tags: value.tags !== false,
     tagRate: number("tagRate", 0, 1),
-    tagFilter:
-      typeof value.tagFilter === "string" ? value.tagFilter.slice(0, 256) : "",
   };
 }
 export function settingsFromUrl(query: URLSearchParams) {
   const value: Record<string, unknown> = {};
   for (const key of Object.keys(debugDefaults)) {
     if (!query.has(key)) continue;
-    value[key] = ["shape", "tagFilter", "rings", "appearance"].includes(key)
-      ? query.get(key)
-      : key === "labels" ||
-          key === "tags" ||
-          key === "crossLinks" ||
-          key === "chains" ||
-          key === "branchesCollapsed"
-        ? query.get(key) !== "0"
-        : Number(query.get(key));
+    value[key] =
+      key === "shape"
+        ? query.get(key)
+        : key === "crossLinks"
+          ? query.get(key) !== "0"
+          : Number(query.get(key));
   }
   return normalizeSettings(value as Partial<DebugSettings>);
 }
 export function debugQuery(settings: DebugSettings) {
   const query = new URLSearchParams({ debug: "1" });
   for (const [key, value] of Object.entries(settings))
-    query.set(
-      key,
-      key === "labels" ||
-        key === "tags" ||
-        key === "crossLinks" ||
-        key === "chains" ||
-        key === "branchesCollapsed"
-        ? value
-          ? "1"
-          : "0"
-        : String(value),
-    );
+    query.set(key, key === "crossLinks" ? (value ? "1" : "0") : String(value));
   return query;
 }
 export function generateDebugGraph(input: DebugSettings) {

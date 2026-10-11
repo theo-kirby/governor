@@ -1,58 +1,30 @@
 # flywheel-viz
 
-A local, read-only Flywheel graph viewer. The default radial view is a black screen. Nothing surrounds that view:
-no logo, sidebar, toolbar, inspector, search, legend, or visible status messages.
-An optional `?debug` mode adds a compact control panel for synthetic stress tests.
-Circular nodes, labels, and edges use only white and shades of gray. Labels sit
-below the circles; containers use slightly larger circles.
-
-React + TypeScript + Vite provide the app shell. A radial layout places the
-root at the center and containment descendants on outward rings. Cytoscape.js
-draws curved edges and handles pan, zoom, and selection. A loopback-only Fastify API reads the
-installed Flywheel CLI or reads legacy Hypergraph Markdown files directly.
-Only synthetic demo data is stored in this project.
-
-## Flywheel live-view experiment
-
-On `experiment/flywheel-live-replica`, add `renderer=flywheel` to try an independently implemented study of the [live Flywheel graph viewer](https://flywheel.paradigma.inc/):
-
-- [Cadex](http://127.0.0.1:4311/?repo=../cadex&renderer=flywheel)
-- [Lab](http://127.0.0.1:4311/?repo=../lab&renderer=flywheel)
-- [Demo](http://127.0.0.1:4311/?demo&renderer=flywheel)
-- [1,000-node research fixture](http://127.0.0.1:4311/?debug=1&shape=research&count=1000&seed=7&renderer=flywheel)
-
-This version has a charcoal canvas, dashed component orbits and generation rings, white roots, colored tag halos, pink stacked-circle run/fan summaries, thin straight edges, and zoom-dependent labels. A tiny collapsible **Ring Lab** panel in the bottom-right switches guide styles and adjusts ink intensity and band width. There is no header, inspector, or help overlay. Click a component outline to focus, stacked circles to expand, or a node to highlight its relationships. Drag nodes or pan; scroll to zoom. **F** fits, **C** folds again, **Escape** clears selection, and **+/-** zoom. **R** cycles occupied arcs, orbital ticks, soft bands, mist bands, ribbon edges, terraced bands, faint solid, dotted (default), dashed, and hidden guides. Share a style with `&ringStyle=arcs|ticks|bands|mist|ribbons|terraces|soft|dotted|dashed|none`. The occupied styles leave empty sectors open and replace outer circles with four subtle boundary brackets. All guides are neutral gray and fade when densely packed. Panel changes preserve the camera and are saved in the URL (`ringInk` and `bandWidth`).
-
-The replica is opt-in; the existing radial renderer and its debug controls remain available. Explicit `?debug` mode retains the synthetic graph-generation controls. Source repositories stay read-only. No live website account or network connection is required to render local graphs.
-
-See [research notes, public bundle references, implementation and fidelity limits](docs/flywheel-live-study.md). It reproduces the visual conventions and core interactions, not the full production layout engine.
-
-## Demo template
+A local, read-only Flywheel and legacy Hypergraph graph viewer. The live-view replica with dotted generation rings is the sole renderer and the version maintained on `main`. It opens on a charcoal canvas with neutral guides, white roots, colored tag halos, pink stacked-circle summaries, straight edges, and zoom-dependent labels. No renderer parameter is needed.
 
 ```sh
 npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173/?demo** for the synthetic visual template:
-**16 nodes and 21 relationships** (15 containment links and 6 semantic edges).
-It contains a Research root, Record / State / Reference containers, and short
-example research chains. The whole demo uses the same circles, radial layout,
-and gestures as a real graph, with no extra interface.
+Open **http://127.0.0.1:5173/?demo** for the synthetic 16-node demo, or **http://127.0.0.1:5173/?repo=../lab** for a local repository. For the production server, use port 4311.
 
-`?demo` takes precedence over every repository setting and makes no API or
-Flywheel calls. It never changes the remembered repository path. A fresh viewer
-with no configured or remembered repository also opens the demo automatically.
-For the production server, use **http://127.0.0.1:4311/?demo**.
+The old radial, adaptive-ring, focus-lens, radial-atlas, research-rivers, and ring-style experiments have been retired. Old renderer and ring-style URL parameters are ignored.
 
-Edit **`src/demo.ts`** to reuse it as a template:
+## Graph interaction
 
-- `nodeDefinitions`: stable ID, display title, and parent ID (`null` for roots).
-- `semanticDefinitions`: scope container ID, source ID, and target ID.
+- Drag the background to pan, drag nodes to move them, and scroll to zoom.
+- Click a component outline to focus, a node to highlight its relationships, or stacked circles to expand a folded run or fan.
+- **F** / **0** fits the graph, **C** folds it again, **Escape** clears selection, and **+/-** zooms.
+- Dotted generation rings fade when densely packed; component boundaries use faint solid outlines and component orbits use dashed guides.
 
-Containment edges and child/edge counts are derived automatically. Keep IDs
-unique, use existing endpoints, and keep a semantic edge's endpoints inside
-its scope. All sample names and relationships are invented; no lab data is used.
+The normal viewer has no header, inspector, or control panel. Loading and failed reads leave a blank screen; failures are reported in the browser console. Reload to read current graph data. Source repositories remain read-only.
+
+## Demo and debug fixtures
+
+`?demo` bypasses all repository settings and API calls without changing the remembered repository. An unconfigured viewer also opens the demo. Edit `src/demo.ts` to change the synthetic nodes, parent IDs, tags, and semantic relationships.
+
+`?debug` opens synthetic graph controls and takes precedence over repository and demo settings. Choose a shape, node count, branches, seed, cross-links, link density, and tagged fraction. The 1,000-node research preset exercises folding and larger layouts. Fit, reset, and copy-link controls are available; settings persist in the URL. Debug mode makes no repository requests.
 
 ## Legacy Hypergraph repositories (Cadex)
 
@@ -88,55 +60,6 @@ Cadex was checked with 1,120 nodes and 3,671 relationships (1,140 parent links
 and 2,531 citations). Graphs open with all displayed nodes and chain markers fitted on screen and refit when
 the viewport changes. Press **F** to restore the overview after exploring. Citations are real
 cross-links and can make the overview dense; none are silently hidden.
-
-## Debug playground
-
-Open **http://127.0.0.1:5173/?debug** (or port 4311 for the production server).
-The panel offers 16 shapes: the research demo, balanced tree, deep chain, wide
-star, lopsided tree, repeated merges, directed cycle, disconnected islands,
-dense graph, seeded random structure, evolving research, research bursts, parallel projects,
-loops/parallel edges, a single node, and an empty graph.
-
-- Set **Nodes** (2–2,000) and **Branches / islands** where applicable. The demo,
-  single-node, and empty presets have fixed sizes.
-- **Random structure** mixes uneven containment branches, disconnected roots, and
-  optional cross-links. **Add cross-links** is off by default; enable it to stress
-  non-tree relationships. **Seed** reproduces its topology; **Link density** controls the extra
-  cross-links (up to roughly four per node at maximum density).
-- **1,000-node research** starts a large seeded fixture. **Evolving research** mixes
-  experiment chains, forks and merges; **Research bursts** alternates wide parallel
-  experiments with follow-up chains; **Parallel projects** grows independent roots.
-  Optional citations connect earlier evidence. Change **Seed** / **Next seed** to
-  explore variations. These are synthetic stress cases, not a statistical model of research.
-- **Ring layout** compares branch-local rings, previous adaptive depth rings,
-  and classic depth rings. **Role colors and shapes** optionally distinguishes roots
-  (amber diamonds), forks (cyan circles), and merges (violet hexagons). Hypergraph
-  plan/state tags take precedence, using amber/cyan respectively. Other nodes remain gray.
-- Dense graphs are limited to 60 nodes. **Link density** and **Seed** generate
-  reproducible cross-links; **Next seed** produces a different case.
-- **Ring distance**, **Node spacing**, **Curve strength**, and **Show labels**
-  change the rendering live. Branch-local rings use a radial pitch of the larger of node
-  spacing and 65% of ring distance, with node spacing also enforced around each ring.
-  Previous adaptive rings retain one radius per depth with a minimum radial gap.
-- **Show tags** toggles tag annotations. **Tagged fraction** controls synthetic tag
-  coverage; **Spotlight tag** dims nonmatching nodes without changing topology.
-  Tag coverage uses a separate seeded stream, so changing it preserves the edges.
-- **Fit graph** restores the overview. **Reset** restores the reference demo
-  and default controls. The minus button collapses the panel.
-- Node/edge counts and layout computation time help compare cases. Timing
-  measures positioning only, not canvas rendering or frame rate.
-- Every setting is stored in the URL; **Copy link** captures a reproducible case.
-  Refreshing keeps the same graph and settings.
-
-Debug mode takes precedence over `repo` and `demo`, makes no API/CLI requests,
-and never changes the remembered repository. Its tuning does not affect the
-normal demo or live repository views. It always starts with the full graph fitted.
-The generated graphs deliberately include structures that may not be valid
-Flywheel repositories. Loops, duplicate links, and dense crossings are useful
-stress cases; overlapping edges are not automatically separated.
-
-Edit `src/debug-graphs.ts` to add a preset. Use an explicit seed for any randomness,
-unique node/edge IDs, and existing endpoints so the URL reproduces the same case.
 
 ## Run with a local repository
 
@@ -175,173 +98,32 @@ FLYWHEEL_REPO=../lab npm start
 Open **http://127.0.0.1:4311**. Stop the dev server first if it is using port 4311.
 Keep dev dependencies installed: the local server uses the TypeScript runtime.
 
-## Graph interaction
-
-- Drag the background to pan; scroll or pinch to zoom.
-- Click a node to select it. Selection adds a white border without opening UI.
-- Tab to focus the canvas. Arrow keys pan, `+` / `-` zoom, and `F` or `0` fit
-  the entire graph. These controls have no on-screen buttons.
-- Reload the browser to read the latest committed state and recompute the radial layout.
-
-All live nodes are represented, including disconnected nodes. Containment edges
-are dashed dark gray; semantic edges are solid light gray. Arrowheads indicate
-direction. Edges bow away from the radial center along quadratic Bézier curves.
-The bend is determined geometrically for each edge, independently of its direction
-or relationship type. Spokes through the center stay straight. Containment defines
-the rings; semantic edges connect nodes without changing their placement.
-The default is again the **original fixed-sector radial layout**: a node's children
-share a ring and descendants stay in their branch's angular sector. Large graphs
-are simplified before layout using chains and nested branch summaries, rather
-than filling spare space with unrelated nodes.
-
-Add **`&rings=adaptive`** to compare independent depth radii, or **`&rings=compact`**
-for the branch-local spacing experiment. These remain available in debug. All
-modes use the same full-fit camera and detail rendering. Add **`&appearance=roles`**
-for optional role colors and shapes. The default remains monochrome.
-
-Disconnected components share an implied center; no extra node or relationship is
-created. Cycles and multiple parents are reduced to a spanning forest for placement
-only; original relationships are retained, including inward merge and cycle edges;
-collapsed interiors use the projection described below.
-Containment takes priority, then explicit parent links, then non-citation semantic
-links. Citations never move nodes when an explicit hierarchy exists.
-Cross-links can still cross other branches; random fixtures generate them only
-when **Add cross-links** is enabled. Live repository relationships remain visible.
-Long titles are shortened on the canvas, and labels disappear at distant zoom
-levels. Every graph opens fully fitted, and resizing fits it again. Large graphs
-use zoom-dependent circle and edge sizes so the overview does not shrink them
-unnecessarily below a useful pixel size. Circle growth is bounded by layout
-spacing; very large or deep graphs can still become too dense to distinguish on
-small screens. Hover or select a node to reveal its label at readable size and
-highlight direct relationships; hovering also supplies the full title. Visible relationships use reduced emphasis at overview scale. Pan and zoom to explore,
-and press **F** / **0** to return to the overview. Late tag enrichment preserves
-the current camera and selection.
-
-Loading, empty repositories, and failed reads leave the
-screen black. Failures are reported in the browser console; accessible labels
-identify loading and error states. There are no error banners or loading overlays.
-
-For real repositories, the viewer shows committed topology only. It does not display staging, node
-bodies, rendered Markdown, or search results. Hypergraph explicit citations are
-read as edges; Flywheel prose is not parsed for citations.
-UUID mentions in content are never inferred as graph edges. There is no graph
-editing, automatic polling, hosted service, or external synchronization.
-
-## Collapsed chains
-
-Uninterrupted parent–child runs now collapse by default: **first node → stacked
-ellipsis marker → last node**. A marker replaces at least two intermediate nodes;
-its label gives their count. Forks and merges remain visible. Cycles are left
-intact. Chain detection follows containment, then explicit parent relationships,
-then non-citation semantic links. It uses distinct neighbors so duplicate links
-cannot accidentally create a fork.
-
-Click a marker to expand its chain. Focus the canvas and press **C** to collapse
-expanded chains again. The layout refits after expansion or collapse. Add
-**`&chains=0`** to a repository URL to compare with every original node visible,
-or uncheck **Collapse linear chains** in debug. The debug toggle is saved in its
-URL; individually expanded chains are temporary view state.
-
-External links to an intermediate node attach to its marker while collapsed;
-edge identities, types and directions are retained. Internal edges are hidden
-inside the marker. Expansion restores exact original nodes and edges. Tags on
-markers are the union of their members' tags, so tag spotlight still finds them.
-No source graph data is modified. Debug node/edge totals describe the source graph,
-while the canvas accessibility description includes the displayed and original
-node counts.
-
-## Nested branch summaries
-
-When more than 40 nodes remain after chain collapse, the viewer builds a display
-forest from the parent hierarchy and folds deeper subtrees into ellipses. Wide
-sets of siblings are partitioned in source order into at most five groups per
-parent. These are navigational groups, not inferred research topics. Their labels
-count original nodes, including nodes inside chain markers.
-
-Click a branch ellipsis to reveal its next level; children may themselves be
-ellipses. Chain markers continue to expand their linear interiors. **C** restores
-the folded overview. Disconnected components and multiple parents use the same
-spanning-forest convention as the radial layout; secondary relationships remain
-cross-links. A thin display-tree link through a sibling group expresses grouping,
-not a new causal relationship in the source graph.
-
-The overview emphasizes the tree. Cross-links are aggregated by visible endpoints,
-kind and relation and faded until hovered or selected; links internal to a folded
-branch are represented inside its marker. Turn off **Nest branch summaries** in
-debug, or add **`&branchesCollapsed=0`**, to compare the chain-only graph. Also add
-**`&chains=0`** for the original uncollapsed nodes and individual edges. Expansion
-refits the view and can change angular allocation; stable positions across levels
-are not guaranteed. Source files remain untouched.
-
-## Tagged nodes
-
-Nodes can carry `tags: [{ id, name, scope? }]`. Tags appear below the title as
-`#active · #review`, with a `+N` suffix when there are more than two. Long names
-are shortened on the canvas. Tagged nodes have a heavier grayscale outline.
-Tag labels stay independent of the title-visibility toggle in debug mode.
-
-The reference demo includes fixed tags; edit `demoTags` in `src/demo.ts` to
-change them. Other debug presets generate zero, one, or two tags per node from
-`active`, `review`, `blocked`, and `reference`. Tag visibility, coverage, and
-spotlight selection are saved in the debug URL.
-
-For live repositories, the adapter reads committed tags with `repo:tag:list`,
-including pagination and head guards. Only active definitions on live holders
-are shown. Scope and tag ID remain distinct even when display names match.
-Tag colors from Flywheel are intentionally rendered in grayscale.
-
-Flywheel exposes tags per scope, and any node can be a scope, so the first read
-of a commit scans all node scopes with at most four CLI processes at once.
-The graph opens first; a background request loads tags for that same commit,
-preserving zoom, pan, and selection. On large repositories this scan can take
-tens of seconds. If it fails or the commit changes, the graph remains visible
-and the console reports the error. Tag results
-are cached in memory for up to four repository/commit pairs; changing commits
-causes a fresh scan. The viewer does not create, assign, rename, or retire tags.
-
 ## Architecture
 
-- `server/hypergraph.ts`: read-only legacy Markdown/YAML adapter and citation resolution.
-- `server/adapter.ts`: allowlisted local CLI reads, JSON validation, pagination,
-  and commit-head consistency guards. Node-list parent IDs supply containment;
-  scopes with nonzero edge counts are read with `repo:edge:list`. Active tag
-  definitions and holders are read with `repo:tag:list`.
-- `server/app.ts`: `/api/config` and `/api/graph`, validated paths, local host and
-  origin checks, and a required custom request header. No CORS or write routes.
+- `src/App.tsx`: repository selection, topology loading, and background tag enrichment.
+- `src/FlywheelCanvas.tsx`: Canvas 2D rendering, dotted guides, gestures, selection, and folding.
+- `src/flywheel-model.ts`: run/fan projection, generation rings, and component layout.
+- `src/collapse-chains.ts`: shared reversible chain projection used by the replica.
+- `src/DebugView.tsx` and `src/debug-graphs.ts`: synthetic fixtures and reproducible controls.
+- `server/adapter.ts`: validated, paginated, read-only Flywheel CLI calls and commit-head guards.
+- `server/hypergraph.ts`: legacy Markdown/YAML adapter and citation resolution.
+- `server/app.ts`: loopback API, path validation, host/origin checks, and required request header.
 - `shared/types.ts`: normalized graph types.
-- `src/App.tsx`: demo selection or automatic repository resolution, topology loading, and background tag enrichment.
-- `src/demo.ts`: editable synthetic graph template, independent of the API.
-- `src/debug-graphs.ts`: deterministic stress generators and bounded URL settings.
-- `src/DebugView.tsx`: debug-only preset and live tuning controls.
-- `src/collapse-branches.ts`: nested sibling/subtree summaries and projected cross-links.
-- `src/collapse-chains.ts`: reversible projection of linear interiors into chain markers.
-- `src/layout.ts`: Radial geometry for all nodes, with space reserved for circular nodes and their labels.
-- `src/compact-rings.ts`: branch-local collision spacing with fixed subtree directions.
-- `src/GraphCanvas.tsx`: canvas rendering with optional role encoding and pointer/keyboard gestures.
-- `src/edge-curves.ts`: outward Bézier bend direction for each pair of endpoints.
-- `src/node-label.ts`: bounded title/tag annotation formatting.
-- `src/styles.css`: black, full-viewport presentation.
-- `tests/`: synthetic adapter, API, radial-layout, and browser tests.
 
-Every paginated read is guarded with `at_head`, and status is checked again
-after loading. A changed commit head fails the read instead of mixing commits;
-reload to try again. Snapshot data stays in memory. Only the last repository
-path is saved in local storage. The app does not access SQLite directly.
+React + TypeScript + Vite provide the app shell; Fastify serves the local API. The browser uses Canvas 2D without Cytoscape. See [replica research and fidelity limits](docs/flywheel-live-study.md).
+
+For Flywheel repositories, topology is committed state; tags load afterward for the same commit. The viewer does not edit graphs, render node bodies, poll automatically, or synchronize externally. Tag colors are stable hashes. Snapshots stay in memory; only the last successful repository path is stored locally.
 
 ## Development and checks
 
 ```sh
-npm run check          # Adapter/API/layout tests, TypeScript, production build
+npm run check
 npx playwright install chromium
-npm run test:ui        # Synthetic browser tests; starts dev server if needed
-npm run format        # Format source, configuration, and README
+npm run test:ui
+npm run format
 ```
 
-`PLAYWRIGHT_EXECUTABLE_PATH` can point at an existing Chromium executable.
-Browser tests check automatic loading, the absence of interface elements,
-grayscale canvas pixels, keyboard zoom, narrow viewports, failures, demo isolation, and debug controls/URL replay.
-All automated fixtures are synthetic. Use `../lab/.flywheel` for manual local
-checks; do not save its data or screenshots in Git.
+`PLAYWRIGHT_EXECUTABLE_PATH` can select an existing Chromium executable. `VIEWER_URL=http://127.0.0.1:4311 npm run test:ui` targets an existing production viewer. Tests use synthetic fixtures and cover adapters, API safeguards, projection/layout, repository loading, dotted defaults, folding, gestures, resize, and debug URL replay.
 
 ## Privacy and source graph
 
@@ -371,6 +153,5 @@ It was started after the installed npm CLI 0.2.78's `flywheel ui` failed with
 - [Flywheel installation](https://docs.flywheel.paradigma.inc/install)
 - [Flywheel repository model](https://docs.flywheel.paradigma.inc/concepts/repos)
 - [Flywheel CLI reference](https://docs.flywheel.paradigma.inc/cli)
-- [Cytoscape.js renderer](https://js.cytoscape.org/)
 
 Browser tests can target an existing production viewer with `VIEWER_URL=http://127.0.0.1:4311 npm run test:ui` when port 5173 is occupied.

@@ -31,8 +31,8 @@ The live free-view edges observed at detail scale are fine straight segments, no
 
 - `src/flywheel-model.ts`: structural components, run/fan projection, deterministic generation rings, angular separation, orbital packing. Parent topology controls placement; citations remain cross-links.
 - `src/FlywheelCanvas.tsx`: Canvas 2D renderer, screen-space guides/edges, folded glyphs, tag halos, title LOD, hover traces, node dragging, pan/zoom, selection highlighting, component focus.
-- `src/flywheel.css`: full-screen charcoal canvas styling. Local styling now uses a faint neutral outer outline and density-faded gray generation rings instead of the reference gold/green rings; R cycles occupied arcs, orbital ticks, soft occupied bands, feathered mist bands, outlined ribbons, alternating terraces, solid, dotted (default), dashed, and hidden guides (`ringStyle` URL parameter). Arcs/bands merge occupied angular intervals on each generation; ticks bracket individual node angles. These three modes use four small outer boundary brackets. These guides describe placement, not additional relationships.
-- `?renderer=flywheel`: opt-in route supported by demo, repository and debug views. Removing it returns to the original experiment.
+- `src/flywheel.css`: full-screen charcoal styling with dotted, density-faded generation rings, faint component outlines, and dashed component orbits.
+- The replica is the sole renderer for demo, repository, and debug views; no `renderer` parameter is required.
 
 The source graph is unchanged. Clicking a fold expands its members; C collapses again. F or 0 fits; +/- zoom; Escape clears selection. Resize and projection changes refit the camera. Node drags and expanded folds are temporary.
 
@@ -42,14 +42,14 @@ At inspection, Cadex's 1,120 original nodes projected to 223 displayed nodes, 44
 
 This is a visual/interaction replica, not the complete production algorithm. The live site uses Sigma/WebGL and additional staged loading, occupancy-aware guide arcs, layout validation, component packing and automatic LOD policies. Our implementation uses Canvas 2D, a deterministic spanning order with longest-path DAG generations, collision-constrained ring angles, simpler orbital packing, full local guide circles, and manual fold expansion. Cycles fall back to finite BFS generations. Layout runs on the main thread; tens of thousands of nodes are not yet benchmarked.
 
-Tag colors are stable hashes because our normalized tags lack the live site's stored color metadata. Access badges, banners, full node content/artifacts, auth, editing, timeline and server features are outside this graph-view experiment. The local viewer omits the hosted site’s header, controls, inspector, and help overlays. A small collapsible Ring Lab panel switches guide styles and adjusts ink/width without changing the camera; settings persist in the URL. Graph labels, guides and tag halos remain.
+Tag colors are stable hashes because our normalized tags lack the live site's stored color metadata. Access badges, banners, full node content/artifacts, auth, editing, timeline and server features are outside this graph-view experiment. The local viewer omits the hosted site’s header, controls, inspector, and help overlays. The ring-style experiments and Ring Lab panel have been removed; dotted generation rings are fixed. Graph labels, guides and tag halos remain.
 
-Parallel projected links with identical endpoint/kind/relation are combined while folded. Cross-links internal to a fold return when expanded. Local source data and the public site's data differ, so screenshots do not establish pixel-identical layout. Expanded long chains still produce many sparse rings; that is a useful comparison against our nested branch approach.
+Parallel projected links with identical endpoint/kind/relation are combined while folded. Cross-links internal to a fold return when expanded. Local source data and the public site's data differ, so screenshots do not establish pixel-identical layout. Expanded long chains still produce many sparse rings; folding keeps the overview compact.
 
 Next useful comparisons: Cadex record-only with citations toggled, three separate project chains, broad leaf fans, and the seeded 1,000-node research fixture. Compare initial overview, component focus, and close node scale separately.
 
 ## Validation
 
-Unit tests cover run/fan thresholds, expansion, source immutability, full membership coverage, valid edges, deterministic finite coordinates, separated component bounds/node bodies, cycles and citation-independent placement across large fixture families. Browser tests cover fold clicks/reset, minimal presentation after selection, style switching and URL replay, pan/zoom/refit, mobile resize, and renderer persistence when switching debug seeds/shapes. Visual checks include live-site overview/detail and local Cadex, research, burst and teams graphs.
+Unit tests cover run/fan thresholds, expansion, source immutability, full membership coverage, valid edges, deterministic finite coordinates, separated component bounds/node bodies, cycles and citation-independent placement across large fixture families. Browser tests cover fold clicks/reset, minimal presentation after selection, dotted defaults and legacy URL compatibility, pan/zoom/refit, mobile resize, and renderer persistence when switching debug seeds/shapes. Visual checks include live-site overview/detail and local Cadex, research, burst and teams graphs.
 
 One stress check exposed expensive offscreen dashed circles when zooming into an unfolded 1,000-node chain. Viewport culling fixed the interaction stall; the offscreen-circle culling remains in the graph renderer.

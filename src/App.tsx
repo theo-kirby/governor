@@ -3,7 +3,9 @@ import type { Snapshot } from "../shared/types";
 import { demoGraph } from "./demo";
 
 const Graph = lazy(() =>
-  import("./GraphCanvas").then((module) => ({ default: module.Graph })),
+  import("./FlywheelCanvas").then((module) => ({
+    default: module.FlywheelCanvas,
+  })),
 );
 
 async function read<T>(path: string, signal: AbortSignal): Promise<T> {

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hypergraphSnapshot } from "../server/hypergraph";
 import { createApp } from "../server/app";
-import { layoutGraph } from "../src/layout";
+import { layoutFlywheel } from "../src/flywheel-model";
 
 async function fixture() {
   const repo = await mkdtemp(join(tmpdir(), "hypergraph-viewer-"));
@@ -69,8 +69,8 @@ test("Hypergraph reads working-tree nodes, multiple parents, citations and statu
     assert(!JSON.stringify(graph).includes("Private body"));
     assert.equal(await readFile(path, "utf8"), original);
     assert.deepEqual(
-      layoutGraph(graph.nodes, graph.edges),
-      layoutGraph(
+      layoutFlywheel(graph.nodes, graph.edges),
+      layoutFlywheel(
         graph.nodes,
         graph.edges.filter((e) => e.relation === "parent"),
       ),
