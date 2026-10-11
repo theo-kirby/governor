@@ -18,6 +18,10 @@ async function read<T>(path: string, signal: AbortSignal): Promise<T> {
   return data;
 }
 
+const Hub = lazy(() =>
+  import("./HubCanvas").then((module) => ({ default: module.HubCanvas })),
+);
+
 const DebugView = lazy(() =>
   import("./DebugView").then((module) => ({ default: module.DebugView })),
 );
@@ -72,7 +76,7 @@ function Viewer() {
         return;
       }
       const graphQuery = new URLSearchParams({ repo });
-      for (const option of ["view", "citations"]) {
+      for (const option of ["view", "citations", "source"]) {
         const value = query.get(option);
         if (value !== null) graphQuery.set(option, value);
       }
@@ -133,7 +137,11 @@ function Viewer() {
     >
       {snapshot && (
         <Suspense fallback={null}>
-          <Graph nodes={snapshot.nodes} edges={snapshot.edges} label={status} />
+          {new URLSearchParams(location.search).get("layout") === "hub" ? (
+            <Hub nodes={snapshot.nodes} edges={snapshot.edges} label={status} />
+          ) : (
+            <Graph nodes={snapshot.nodes} edges={snapshot.edges} label={status} />
+          )}
         </Suspense>
       )}
     </main>

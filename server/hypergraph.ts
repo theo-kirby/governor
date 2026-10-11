@@ -10,6 +10,7 @@ const metadata = z.object({
   slug: z.string().min(1),
   title: z.string(),
   parents: z.array(z.string()).default([]),
+  created_at: z.union([z.string(), z.date()]).optional(),
 });
 function yaml(text: string) {
   const document = parseDocument(text);
@@ -125,6 +126,10 @@ export async function hypergraphSnapshot(
       childCount: 0,
       edgeCount: 0,
       lifecycle: "live",
+      createdAt:
+        meta.created_at instanceof Date
+          ? meta.created_at.toISOString()
+          : meta.created_at,
       tags: [
         { id: `graph:${group}`, name: group },
         ...(status ? [{ id: `status:${status}`, name: status }] : []),

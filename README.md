@@ -1,4 +1,28 @@
-# flywheel-viz
+# governor
+
+Hypergraph's replacement, built on Flywheel: the conventions, skills and a small CLI for a
+record/state research graph kept in a Flywheel repository, plus the viewer. The viewer
+started as `flywheel-viz`; its history is merged in.
+
+## The hub layout (prototype)
+
+`?layout=hub` draws the graph as one wheel instead of two graphs:
+
+- **the hub**, the state root, at the centre;
+- **state claims** on rings by depth, each subtree in an angular sector sized by its
+  claims and evidence (the spokes);
+- **records** on the rim, at the angle of the claims that cite them. They are packed
+  newest-first into the nearest free slot, so each claim's evidence stacks outward as a
+  tooth. Records nobody cites take the angle of their causal neighbours.
+
+Status colours the claims: open amber, working green, broken red, blocked violet. Hover
+or click a node to see its citations and history.
+For Cadex's markdown graph: `?repo=/path/to/cadex&source=hypergraph&layout=hub`.
+`src/hub-model.ts` is the layout; `tests/hub-model.test.ts` pins it.
+
+---
+
+## The viewer (from flywheel-viz)
 
 A local, read-only Flywheel and legacy Hypergraph graph viewer. The live-view replica with dotted generation rings is the sole renderer and the version maintained on `main`. It opens on a charcoal canvas with neutral guides, white roots, colored tag halos, pink stacked-circle summaries, straight edges, and zoom-dependent labels. No renderer parameter is needed.
 

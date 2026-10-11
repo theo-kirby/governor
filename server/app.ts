@@ -13,6 +13,7 @@ const querySchema = z.object({
     .regex(/^[a-zA-Z0-9_-]+$/)
     .optional(),
   citations: z.enum(["0", "1"]).optional(),
+  source: z.enum(["flywheel", "hypergraph"]).optional(),
   head: z
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)
@@ -72,16 +73,17 @@ export function createApp(adapter = new FlywheelAdapter()) {
     defaultRepo: process.env.FLYWHEEL_REPO || "",
   }));
   app.get("/api/graph", async (request) => {
-    const { repo, tags, head, view, citations } = querySchema.parse(
+    const { repo, tags, head, view, citations, source } = querySchema.parse(
       request.query,
     );
     const root = await resolveRepo(repo);
-    let flywheel = true;
-    try {
-      await access(join(root, ".flywheel/db.sqlite"));
-    } catch {
-      flywheel = false;
-    }
+    let flywheel = source !== "hypergraph";
+    if (flywheel && source !== "flywheel")
+      try {
+        await access(join(root, ".flywheel/db.sqlite"));
+      } catch {
+        flywheel = false;
+      }
     if (!flywheel)
       return hypergraphSnapshot(root, { view, citations: citations !== "0" });
     return adapter.snapshot(root, tags === "1", head);

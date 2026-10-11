@@ -11,6 +11,8 @@ export interface GraphNode {
   edgeCount: number;
   lifecycle: string;
   tags?: NodeTag[];
+  /** ISO-8601 creation time when the source records one (the hub layout's age axis). */
+  createdAt?: string;
 }
 export interface GraphEdge {
   id: string;
