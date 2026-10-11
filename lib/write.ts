@@ -196,10 +196,13 @@ export type ClaimChange = {
   /** for new claims: parent claim slug or `root` */
   parent?: string;
   title?: string;
-  status: Status;
+  /** omit (or null) only for a component: a status-less grouping directly under the root */
+  status?: Status | null;
+  /** a component groups claims and carries no status of its own (G4) */
+  component?: boolean;
   current: string;
   negative?: string;
-  cites: string[];
+  cites?: string[];
 };
 export type FoldPlan = { claims: ClaimChange[]; folded: string[]; view?: Extract<Kind, "state" | "plan"> };
 
@@ -227,9 +230,21 @@ export function validateFold(s: GraphSnapshot, plan: FoldPlan): string[] {
       if (!p && !newNames.has(c.parent!)) problems.push(`new claim ${c.new}: parent \`${c.parent}\` is not in the graph`);
       else if (p && p.kind !== "root" && p.kind !== (c.kind ?? plan.view ?? "state")) problems.push(`new claim ${c.new}: parent \`${c.parent}\` is a ${p.kind} node`);
     }
-    if (!(STATUSES as readonly string[]).includes(c.status)) problems.push(`claim ${label}: status \`${c.status}\` is not one of ${STATUSES.join(", ")}`);
-    if (!c.cites.length && c.status !== "open") problems.push(`claim ${label}: a ${c.status} claim cites at least one record (G4)`);
-    for (const r of c.cites) {
+    const cites = c.cites ?? [];
+    if (c.component) {
+      if (c.status) problems.push(`claim ${label}: a component carries no status`);
+      const existing = c.slug ? resolve(s, c.slug) : null;
+      if (c.new && (c.parent ?? "root") !== "root") problems.push(`component ${label}: its parent is the root`);
+      if (existing && (existing.status || !existing.parents.includes(s.root ?? ""))) problems.push(`\`${c.slug}\` is not a component`);
+    } else {
+      const existing = c.slug ? resolve(s, c.slug) : null;
+      if (!c.status && existing?.status) problems.push(`claim ${label}: give its status`);
+      else if (!c.status && !existing) problems.push(`claim ${label}: give its status, or mark it \`component: true\``);
+      else if (c.status && !(STATUSES as readonly string[]).includes(c.status)) problems.push(`claim ${label}: status \`${c.status}\` is not one of ${STATUSES.join(", ")}`);
+      if (c.status && !cites.length && c.status !== "open" && !(existing && existing.status === c.status))
+        problems.push(`claim ${label}: a ${c.status} claim cites at least one record (G4)`);
+    }
+    for (const r of cites) {
       const n = resolve(s, r);
       if (!n || n.kind !== "record") problems.push(`claim ${label}: cited \`${r}\` is not a record`);
     }
@@ -245,7 +260,8 @@ export async function fold(fw: Flywheel, plan: FoldPlan): Promise<{ head: string
     const created: Record<string, string> = {};
     const taken = new Set(bySlug(s).keys());
     const edgeFrom = new Map(s.edges.map((e) => [`${e.source}>${e.target}`, e]));
-    const msg = `${FOLD_PREFIX}: ${plan.folded.length} record(s), ${plan.claims.length} claim(s)`;
+    const view = plan.view && plan.view !== "state" ? ` (${plan.view})` : "";
+    const msg = `${FOLD_PREFIX}${view}: ${plan.folded.length} record(s), ${plan.claims.length} claim(s)`;
     const { head } = await transaction(fw, msg, async (tmp) => {
       const ids = new Map<string, string>(); // new name → id
       const pending = [...plan.claims];
@@ -275,11 +291,11 @@ export async function fold(fw: Flywheel, plan: FoldPlan): Promise<{ head: string
             await fw.call("repo:node:set", id, "--field", "title", "--value-file", await tmp("title.txt", c.title));
         }
         const had = node?.status ?? null;
-        if (had !== c.status) {
+        if (!c.component && c.status && had !== c.status) {
           if (had) await fw.call("repo:node-tag:remove", s.root!, id, tagId(s, had));
           await fw.call("repo:node-tag:assign", s.root!, id, tagId(s, c.status));
         }
-        for (const r of new Set(c.cites)) {
+        for (const r of new Set(c.cites ?? [])) {
           const rid = resolve(s, r)!.id;
           if (!edgeFrom.has(`${id}>${rid}`)) {
             await fw.call("repo:edge:add", s.root!, id, rid, "--content-file", await tmp("edge.txt", "cites\n"));

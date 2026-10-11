@@ -88,3 +88,33 @@ test("staged work governor did not leave is refused, not swept into a commit", {
   assert.equal(r.code, 2);
   assert.match(r.out, /did not stage/);
 });
+
+test("a plan component, plan claims, render --view plan, and the JSON outputs", { skip: !available, timeout: 300_000 }, async () => {
+  const dir = project();
+  await gov(dir, "init", "--title", "IT");
+  const head0 = JSON.parse((await gov(dir, "head", "--json")).out).head;
+  const r = JSON.parse((await gov(dir, "record", "--title", "Bet: go", "--body", "body.md", "--parent", "root", "--new", "plan-short: try it", "--json")).out);
+  assert.match(r.slug, /^[a-z]+-[a-z]+-\d{4}$/);
+  assert.notEqual(r.head, head0);
+  const plan = {
+    view: "plan",
+    folded: [],
+    claims: [
+      { new: "plan", title: "plan", component: true, current: "- the plan" },
+      { new: "short", parent: "plan", title: "Short: try it", status: "open", current: "- try it", cites: [r.slug] },
+    ],
+  };
+  writeFileSync(join(dir, "plan.json"), JSON.stringify(plan));
+  const f = await gov(dir, "fold", "--apply", "plan.json", "--json");
+  assert.equal(f.code, 0, f.out);
+  assert.deepEqual(Object.keys(JSON.parse(f.out).created).sort(), ["plan", "short"]);
+  const c = JSON.parse((await gov(dir, "check", "--json")).out);
+  assert.equal(c.ok, true, JSON.stringify(c.findings));
+  const md = (await gov(dir, "render", "--view", "plan")).out;
+  assert.match(md, /^- \[open\] \*\*Short: try it\*\*/m);
+  assert.doesNotMatch(md, /Unfolded records/);
+  const log = JSON.parse(execFileSync("flywheel", ["repo:log", "--format=json"], { cwd: dir }).toString());
+  assert.ok(log.commits.some((x: { message: string }) => x.message.startsWith("governor fold (plan):")));
+  writeFileSync(join(dir, "bad.json"), JSON.stringify({ folded: [], claims: [{ new: "x", parent: "root", title: "x", current: "- x" }] }));
+  assert.match((await gov(dir, "fold", "--apply", "bad.json")).out, /component: true/);
+});

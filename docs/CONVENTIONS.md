@@ -87,9 +87,15 @@ Warnings that do not fail the check:
 - **The folder** (one at a time, on the default branch) applies the tail.
   `governor fold` lists the tail with its impacts. The agent rewrites the claims; then
   `governor fold --apply` writes the bodies, statuses and citations and tags the records
-  `folded`, in one commit.
+  `folded`, in one commit. A fold may create a component (`"component": true`, no
+  status) to group claims.
+- **The planner** writes plan claims the same way: a fold with `"view": "plan"` writes
+  `plan`-kind claims under a plan component, usually with `"folded": []` so the state
+  folder still owns the tail. Its commit reads `governor fold (plan): …`.
 - **Readers** run `governor orient` (frontier, tail, and recent records),
-  `governor render` (writes `STATE.md`), or `governor viz` (the hub view).
+  `governor render` (writes `STATE.md`; `--view plan` writes the plan), or
+  `governor viz` (the hub view). Tools use `governor head` as a cache key and `--json`
+  on `record`, `fold --apply` and `check`.
 
 ## Concurrency
 

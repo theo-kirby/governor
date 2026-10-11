@@ -24,6 +24,10 @@ that writes it, which is what keeps parallel agents from drifting it.
    A `NEW` impact becomes a new claim: give it a `new` name, a `title`, a `parent` (the
    component it belongs under, or `root` for a new component) and the same fields.
    Several records may impact one claim; write it once with all of them in mind.
+   To group claims under a new component, add `{"new": "<name>", "title": "…",
+   "component": true, "current": "- what it covers"}` (no status, parent the root) and
+   parent the claims to its name. A rewrite that keeps a claim's status may leave out
+   `cites` it already has.
 3. Write the plan to a file and apply it:
    ```json
    {"claims": [

@@ -19,12 +19,15 @@ const HELP = `governor — a record/state research graph on a Flywheel repositor
   governor fold                            print the tail and its declared impacts
   governor fold --apply PLAN.json          write claims, statuses, citations; tag records folded
   governor check [--threshold N]           enforce the rules (exit 1 on a violation)
-  governor render [-o STATE.md]            the state snapshot as markdown
+  governor render [--view plan] [-o FILE]  the state (or plan) snapshot as markdown
+  governor head                            the repository head (cheap; for cache keys)
   governor orient                          frontier + tail impacts + recent records
   governor snapshot                        the whole graph as JSON
   governor migrate-hypergraph --from DIR   import a Hypergraph project's exports (see docs)
   governor viz [--port N]                  serve the hub viewer for this repository
   governor skills install [--user|--target DIR]   copy the skills into .claude/skills
+
+--json makes record, fold --apply, check and head print one JSON object.
 
 Options: --repo DIR (default: the .flywheel repository above the current directory,
 resolved through git worktrees to the main checkout).`;
@@ -74,6 +77,7 @@ async function main(argv: string[]): Promise<number> {
       from: { type: "string" },
       port: { type: "string" },
       json: { type: "boolean" },
+      view: { type: "string" },
       user: { type: "boolean" },
       target: { type: "string" },
     },
@@ -100,7 +104,8 @@ async function main(argv: string[]): Promise<number> {
         none: values.none ?? null,
         ctx: await gitContext(new Date().toISOString().replace(/\.\d+Z$/, "Z")),
       });
-      console.log(`${r.slug}  (record)  committed ${r.head?.slice(0, 19) ?? ""}`);
+      if (values.json) console.log(JSON.stringify({ slug: r.slug, head: r.head }));
+      else console.log(`${r.slug}  (record)  committed ${r.head?.slice(0, 19) ?? ""}`);
       return 0;
     }
     case "fold": {
@@ -109,7 +114,8 @@ async function main(argv: string[]): Promise<number> {
         const plan = JSON.parse(await readFile(values.apply, "utf8")) as FoldPlan;
         const r = await fold(fw, plan);
         const made = Object.entries(r.created).map(([k, v]) => `${k} → ${v}`).join(", ");
-        console.log(`folded ${plan.folded.length} record(s) into ${plan.claims.length} claim(s)${made ? `; new: ${made}` : ""}`);
+        if (values.json) console.log(JSON.stringify({ head: r.head, created: r.created, folded: plan.folded.length, claims: plan.claims.length }));
+        else console.log(`folded ${plan.folded.length} record(s) into ${plan.claims.length} claim(s)${made ? `; new: ${made}` : ""}`);
         return 0;
       }
       const s = await snapshot(fw);
@@ -122,14 +128,19 @@ async function main(argv: string[]): Promise<number> {
       const fw = await repoFrom(values.repo);
       const s = await snapshot(fw);
       const findings = check(s, { foldThreshold: values.threshold ? Number(values.threshold) : undefined, legacyBefore: legacyBefore(s) });
-      for (const f of findings) console.log(`${f.level === "violation" ? "VIOLATION" : "warning  "} ${f.rule} ${f.node ? `${f.node}: ` : ""}${f.message}`);
       const n = findings.filter((f) => f.level === "violation").length;
+      if (values.json) {
+        console.log(JSON.stringify({ ok: !n, violations: n, warnings: findings.length - n, findings, head: s.head }));
+        return n ? 1 : 0;
+      }
+      for (const f of findings) console.log(`${f.level === "violation" ? "VIOLATION" : "warning  "} ${f.rule} ${f.node ? `${f.node}: ` : ""}${f.message}`);
       console.log(`\ncheck: ${n} violation(s), ${findings.length - n} warning(s)`);
       return n ? 1 : 0;
     }
     case "render": {
       const fw = await repoFrom(values.repo);
-      const text = renderState(await snapshot(fw));
+      if (values.view && values.view !== "state" && values.view !== "plan") throw new GovernorError("--view is state or plan");
+      const text = renderState(await snapshot(fw), { view: values.view as "state" | "plan" | undefined });
       if (values.output) await writeFile(values.output, text);
       else process.stdout.write(text);
       return 0;
@@ -137,6 +148,13 @@ async function main(argv: string[]): Promise<number> {
     case "orient": {
       const fw = await repoFrom(values.repo);
       process.stdout.write(orient(await snapshot(fw)));
+      return 0;
+    }
+    case "head": {
+      const fw = await repoFrom(values.repo);
+      const st = await fw.call("repo:status");
+      const head: string | null = st.heads?.workspace ?? null;
+      console.log(values.json ? JSON.stringify({ head, repository: st.repository_id ?? null }) : head ?? "");
       return 0;
     }
     case "snapshot": {
