@@ -63,6 +63,12 @@ export function check(s: GraphSnapshot, opts: { foldThreshold?: number; legacyBe
     if (!ok) v("G5", s.nodes[e.source] ?? null, `edge ${a} → ${b} is neither an impact nor a citation`);
   }
 
+  // G5: every relation line names a node of the right kind (old imported text only warns)
+  for (const d of s.dangling ?? []) {
+    const n = s.nodes[d.node] ?? null;
+    (n && legacy(n) ? w : v)("G5", n, `${d.relation === "impact" ? "impact on" : "cites"} \`${d.ref}\`, ${d.why}`);
+  }
+
   // G6: no cycles in lineage
   const color = new Map<string, number>();
   const visit = (id: string): boolean => {

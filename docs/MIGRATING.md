@@ -16,14 +16,15 @@ governor check --repo /tmp/new-graph
 | plan root (a view) | a `plan` component under the root |
 | node slug, title, summary, body | the same, except that a claim's `Status:` line becomes a status tag |
 | `created_at` | a `## Recorded` section with `- at:`, and `- artifact:` lines for evidence paths |
-| record `## State Impact` lines | impact edges record → claim. `NEW` lines stay as prose for a fold to apply. |
-| claim `## Provenance` lines and `[rec: slug]` mentions | citation edges claim → record (the `## Provenance` reason as the edge content) |
+| record `## State Impact` lines | kept as they are: they are the impacts. `NEW` lines stay for a fold to apply. |
+| claim `## Provenance` lines and `[rec: slug]` mentions | kept as they are: they are the citations. A fold rewrites the list as `## Evidence`. |
 | records inside the state root's high-water mark | tagged `folded` |
 | parents | lineage; the old roots' children hang off the governor root |
 
 The run commits every 500 operations (`governor migrate: part N`). `check` treats every
 migrated record as legacy for G3, since Hypergraph's `none:` and impact lines were
-already enforced. Cadex's 1,135 nodes are about 8,000 operations, around 25 minutes.
+already enforced, and reports references in imported text that dangle as warnings.
+Cadex's 1,135 nodes are about 5,500 operations, around 35 minutes.
 
 Cutting a project over:
 

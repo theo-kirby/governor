@@ -13,8 +13,9 @@ The discipline is Hypergraph's, kept where it earned its place:
 - Every state claim **cites** the records it rests on, and every record **declares** what
   it changes in state. A fresh agent reads state first and the record log only to dig.
 
-What changes from Hypergraph: one graph instead of two, real Flywheel edges instead of
-slugs inside markdown, Flywheel tags instead of `Status:` lines, and no files.
+What changes from Hypergraph: one graph instead of two, Flywheel tags instead of
+`Status:` lines, and no files. Impacts and citations stay slug lines in node content, as
+in Hypergraph; governor derives the edges from them (see "Why relations are content").
 
 ## The graph
 
@@ -29,19 +30,29 @@ slugs inside markdown, Flywheel tags instead of `Status:` lines, and no files.
 
 | Element | Flywheel construct |
 |---|---|
-| The project | one **root** node, tagged `governor`. It is the tag scope and the edge graph for everything below. |
-| Membership | every node is **contained** in the root (flat). Flywheel only draws edges between descendants of one container. |
+| The project | one **root** node, tagged `governor`. It is the tag scope for everything below. |
+| Membership | every node is **contained** in the root (flat). |
 | Kind | exactly one tag: `record`, `state`, or `plan`. |
 | State tree | **lineage** among state nodes. Top-level components are children of the root. A claim's parent is the component it belongs to. |
 | Record history | **lineage** among records, meaning "this followed from that result". The project's first records are children of the root. Several parents are fine. |
 | Status | exactly one tag on each state or plan node: `open`, `working`, `broken`, `blocked` or `superseded`. Governor enforces "exactly one"; Flywheel does not. |
 | Folded | the tag `folded` on a record whose impacts a fold has applied. Unfolded records are the **tail**. |
-| Impact | an **edge record → state** whose content lines are the declared deltas, `impact: <delta>`. A claim that does not exist yet has no node to point at, so it is a `- NEW <kebab-name> — <delta>` line in the record's generated `## State Impact`, which the fold turns into a claim. Flywheel edges join two nodes inside the root, never the root itself. |
-| Citation | an **edge state → record**, written by a fold, content `cites`. A claim's citations are its provenance. |
+| Impact | a `- <claim-slug> — <delta>` line in the record's generated `## State Impact` (record → claim). A claim that does not exist yet is `- NEW <kebab-name> — <delta>`, which the fold turns into a claim. |
+| Citation | a `- <record-slug>` or `- <record-slug> — <why>` line in the claim's `## Evidence`, written by a fold (claim → record), plus any `[rec: slug]` mention in the claim's text. Imported claims may carry a `## Provenance` list instead; it reads the same. |
 
-Flywheel allows one edge per ordered pair in a graph, so a record's several deltas to one
-claim are several lines of one edge. A record → claim impact and a claim → record citation
-are different pairs, so they coexist.
+`governor snapshot` derives one edge per (record, claim) impact pair, with one `impact:`
+line per delta, and one per (claim, record) citation, with `cites` or `cites: <why>`. The
+viewer, `check` and tools read those edges. A line that names no node of the right kind
+is a dangling reference.
+
+### Why relations are content
+
+Flywheel 0.2.78 has real edges, and governor first used them. But a local repository
+re-validates every semantic edge on every staged operation, each with a recursive
+containment query, so with Cadex's ~3,000 relations every write took minutes. Lines in
+content cost nothing to write, are readable without the graph, and are what records and
+claims carried anyway. If Flywheel validates edges incrementally, a one-off migration can
+turn the lines into edges without changing the model.
 
 ## Node bodies
 
@@ -50,12 +61,12 @@ writes what goes under them.
 
 - **Record**: `## What`, `## Why`, `## Method`, `## Result`, then a generated
   `## Repo` (repo, branch, commit, when code is involved) and a generated
-  `## State Impact` listing the impacts as prose, or `none: <reason>`. The edges are the
-  machine truth. The section is there so a reader never needs the graph to understand a
-  record.
+  `## State Impact` listing the impacts, or `none: <reason>`. These lines are the
+  impacts.
 - **State**: `## Current` (what is true now; every bullet ends with the record slugs it
   rests on, `[rec: slug]`) and `## Negative knowledge` (what was tried and does not work,
-  and why). The citations are edges; the slugs in the text are for readers.
+  and why), then a generated `## Evidence` list of the records it cites. Citations
+  accumulate: a fold keeps the claim's evidence and adds to it.
 - **Plan** (optional, Ouroboros's bets): a state-shaped node per horizon (`short`,
   `medium`, `long`), single-writer like state. Its writer is the planner.
 
@@ -68,9 +79,9 @@ how anyone refers to a node in prose.
 |---|---|
 | G1 | One root tagged `governor`. Every other node is contained in it and carries exactly one kind tag. |
 | G2 | Records are append-only. After a record's creating commit, no commit sets its fields. Corrections are new child records. |
-| G3 | Every record declares its impact: at least one impact edge, or a `none:` line in `## State Impact`. |
+| G3 | Every record declares its impact: at least one impact or `NEW` line, or a `none:` line in `## State Impact`. |
 | G4 | Every state or plan node except a component carries exactly one status tag and cites at least one record. `working`, `broken` and `blocked` claims cite evidence. |
-| G5 | Edges run the right way. Impacts go record → state or plan. Citations go state or plan → record. |
+| G5 | Relations resolve and run the right way. An impact names a state or plan claim; a citation names a record. (Imported text that dangles is a warning.) |
 | G6 | Lineage stays within a kind. Record parents are records or the root, and state parents are state or the root. There are no cycles. |
 | G7 | Only a fold writes state. Every commit that touches a state node, or assigns `folded`, has a message starting `governor fold`. |
 

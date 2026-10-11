@@ -1,5 +1,11 @@
-// The governor model (docs/CONVENTIONS.md) as data: tag names, statuses, edge grammar,
-// body templates. Nothing here talks to Flywheel.
+// The governor model (docs/CONVENTIONS.md) as data: tag names, statuses, the relation
+// grammar, body templates. Nothing here talks to Flywheel.
+//
+// Relations live in node content, not in Flywheel edges: a record's generated
+// `## State Impact` lines are its impacts, and a claim's `## Evidence` list (plus any
+// `[rec: slug]` mention) is its citations. The snapshot derives edges from them.
+// Flywheel 0.2.78 re-validates every semantic edge on every staged operation, which makes
+// a graph with thousands of edges unwritable.
 
 export const ROOT_TAG = "governor";
 export const KINDS = ["record", "state", "plan"] as const;
@@ -87,9 +93,63 @@ export function declaresNone(content: string): boolean {
   return /^none:\s*\S/m.test(section);
 }
 
-/** A claim's full content from its two prose sections. */
-export function claimContent(current: string, negative: string): string {
-  return ["## Current", "", current.trim() || "_(nothing yet)_", "", "## Negative knowledge", "", negative.trim() || "_(none recorded)_", ""].join("\n");
+export type Citation = { slug: string; why: string };
+
+/** A claim's full content: its two prose sections and its evidence list. */
+export function claimContent(current: string, negative: string, evidence: Citation[] = []): string {
+  const ev = evidence.map((c) => `- ${c.slug}${c.why ? ` — ${oneLine(c.why)}` : ""}`);
+  return [
+    "## Current", "", current.trim() || "_(nothing yet)_", "",
+    "## Negative knowledge", "", negative.trim() || "_(none recorded)_", "",
+    "## Evidence", "", ...(ev.length ? ev : ["_(none yet)_"]), "",
+  ].join("\n");
+}
+
+/** The text under `## heading` (case-insensitive), or null. */
+export function sectionOf(content: string, heading: string): string | null {
+  const m = new RegExp(`^## ${heading}\\s*$`, "im").exec(content);
+  if (!m) return null;
+  const rest = content.slice(m.index + m[0].length);
+  const next = rest.search(/^## /m);
+  return (next < 0 ? rest : rest.slice(0, next)).trim();
+}
+
+const SLUG_IN = /([a-z]+-[a-z]+-\d{4})/;
+/** A claim's citations: its `## Evidence` (or legacy `## Provenance`) list, then `[rec: slug]` mentions. */
+export function citations(content: string): Citation[] {
+  const out = new Map<string, string>();
+  for (const h of ["Evidence", "Provenance"])
+    for (const raw of (sectionOf(content, h) ?? "").split("\n")) {
+      const m = raw.trim().match(/^-\s*`?([a-z]+-[a-z]+-\d{4})`?\s*(?:—\s*(.*))?$/);
+      if (m && !out.has(m[1])) out.set(m[1], (m[2] ?? "").trim());
+    }
+  for (const m of content.matchAll(/\[rec:\s*([a-z]+-[a-z]+-\d{4})\s*\]/g)) if (!out.has(m[1])) out.set(m[1], "");
+  return [...out].map(([slug, why]) => ({ slug, why }));
+}
+
+/** Union of citation lists, first reason wins. */
+export function mergeCitations(...lists: Citation[][]): Citation[] {
+  const out = new Map<string, string>();
+  for (const l of lists) for (const c of l) if (!out.has(c.slug) || (!out.get(c.slug) && c.why)) out.set(c.slug, c.why);
+  return [...out].map(([slug, why]) => ({ slug, why }));
+}
+
+export type ImpactLine = { view: string; target: string; delta: string; isNew: boolean };
+/** A record's `## State Impact` lines: `- <slug> — delta`, `- NEW <name> — delta`, optional `plan/` prefix. */
+export function parseImpacts(content: string): ImpactLine[] {
+  const out: ImpactLine[] = [];
+  for (const raw of (sectionOf(content, "State Impact") ?? "").split("\n")) {
+    const m = raw.trim().match(/^-\s*(?<target>.+?)\s+—\s+(?<delta>.+)$/);
+    if (!m) continue;
+    let target = m.groups!.target.trim().replace(/^`|`$/g, "");
+    let view = "state";
+    if (target.includes("/")) [view, target] = [target.slice(0, target.indexOf("/")), target.slice(target.indexOf("/") + 1).trim()];
+    const isNew = /^NEW\s+/.test(target);
+    target = target.replace(/^NEW\s+/, "").replace(/^`|`$/g, "");
+    if (!isNew && !SLUG_IN.test(target)) continue;
+    out.push({ view, target, delta: m.groups!.delta.trim(), isNew });
+  }
+  return out;
 }
 export function section(content: string, heading: string): string {
   const parts = content.split(/^## /m);

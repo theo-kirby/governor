@@ -1,12 +1,13 @@
 // A whole-graph snapshot from the repository log (docs/CONVENTIONS.md, "Reading fast").
 // The log carries every operation and each node's initial values, so one paginated read
 // rebuilds topology, tags and record bodies. Only nodes whose fields changed after
-// creation (state, plans, the root) need a `node:get`, and edges come from one
-// `edge:list` on the root. Snapshots are cached in `.governor/snapshot.json` by head.
+// creation (state, plans, the root) need a `node:get`. Edges are derived from content
+// (lib/model.ts): impacts from records' `## State Impact`, citations from claims'
+// `## Evidence`. Snapshots are cached in `.governor/snapshot.json` by head.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Flywheel } from "./flywheel";
-import { FOLDED, KINDS, recordedAt, ROOT_TAG, STATUSES, type Kind, type Status } from "./model";
+import { citations, FOLDED, impactContent, KINDS, parseImpacts, recordedAt, ROOT_TAG, STATUSES, type Kind, type Status } from "./model";
 
 export type GNode = {
   id: string;
@@ -31,19 +32,22 @@ export type GNode = {
   at: string | null;
 };
 export type GEdge = { id: string; source: string; target: string; content: string };
+/** A relation line that names no node of the right kind. */
+export type Dangling = { node: string; relation: "impact" | "cites"; ref: string; why: string };
 export type Commit = { id: string; message: string; nodes: string[]; tagged: { node: string; tag: string; op: "assign" | "remove" }[] };
 export type GraphSnapshot = {
-  version: 1;
+  version: 2;
   head: string | null;
   repositoryId: string | null;
   root: string | null;
   nodes: Record<string, GNode>;
   edges: GEdge[];
+  dangling: Dangling[];
   tagIds: Record<string, string>;
   commits: Commit[];
 };
 
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
 
 export async function snapshot(fw: Flywheel, opts: { cache?: boolean } = {}): Promise<GraphSnapshot> {
   const status = await fw.call("repo:status");
@@ -184,18 +188,42 @@ async function build(fw: Flywheel, head: string | null, repositoryId: string | n
     n.folded = n.tags.includes(FOLDED);
     n.at = recordedAt(n.content);
   }
+  const { edges, dangling } = deriveEdges(nodes);
+  return { version: SNAPSHOT_VERSION, head, repositoryId, root, nodes, edges, dangling, tagIds, commits: out };
+}
+
+/** Impact edges (record → claim) and citation edges (claim → record) from node content. */
+export function deriveEdges(nodes: Record<string, GNode>): { edges: GEdge[]; dangling: Dangling[] } {
+  const slugs = new Map<string, GNode>();
+  for (const n of Object.values(nodes)) if (n.live && n.slug) slugs.set(n.slug, n);
   const edges: GEdge[] = [];
-  if (root) {
-    let after: string | undefined;
-    for (;;) {
-      const page = await fw.call("repo:edge:list", root, ...(after ? ["--after", after, "--at_head", head!] : []));
-      for (const e of page.edges)
-        edges.push({ id: e.edge_id, source: e.source_node_id, target: e.target_node_id, content: e.content ?? "" });
-      after = page.next_cursor ?? undefined;
-      if (!after) break;
+  const dangling: Dangling[] = [];
+  for (const n of Object.values(nodes)) {
+    if (!n.live) continue;
+    if (n.kind === "record") {
+      const grouped = new Map<string, string[]>();
+      for (const i of parseImpacts(n.content)) {
+        if (i.isNew) continue;
+        const t = slugs.get(i.target);
+        if (!t || (t.kind !== "state" && t.kind !== "plan")) {
+          dangling.push({ node: n.id, relation: "impact", ref: i.target, why: t ? `a ${t.kind} node, not a claim` : "not in the graph" });
+          continue;
+        }
+        grouped.set(t.id, [...(grouped.get(t.id) ?? []), i.delta]);
+      }
+      for (const [t, deltas] of grouped) edges.push({ id: `impact:${n.id}:${t}`, source: n.id, target: t, content: impactContent(deltas) });
+    } else if (n.kind === "state" || n.kind === "plan") {
+      for (const c of citations(n.content)) {
+        const r = slugs.get(c.slug);
+        if (!r || r.kind !== "record") {
+          dangling.push({ node: n.id, relation: "cites", ref: c.slug, why: r ? `a ${r.kind} node, not a record` : "not in the graph" });
+          continue;
+        }
+        edges.push({ id: `cites:${n.id}:${r.id}`, source: n.id, target: r.id, content: c.why ? `cites: ${c.why}\n` : "cites\n" });
+      }
     }
   }
-  return { version: SNAPSHOT_VERSION, head, repositoryId, root, nodes, edges, tagIds, commits: out };
+  return { edges, dangling };
 }
 
 // ---- conveniences over a snapshot

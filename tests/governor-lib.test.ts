@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { check } from "../lib/check";
 import { citations, claimBody, parseImpacts, recordBody } from "../lib/migrate";
-import { declaresNone, impactContent, newClaims, parseEdge, recordContent, recordedAt } from "../lib/model";
-import type { GNode, GraphSnapshot } from "../lib/snapshot";
+import { claimContent, declaresNone, impactContent, mergeCitations, newClaims, parseEdge, recordContent, recordedAt } from "../lib/model";
+import { deriveEdges, type GNode, type GraphSnapshot } from "../lib/snapshot";
 
 const node = (id: string, kind: GNode["kind"], extra: Partial<GNode> = {}): GNode => ({
   id, slug: `${id}-x-0001`.replace(/[^a-z-0-9]/g, ""), title: id, summary: "", content: "", seq: 0, createdIn: "c0",
@@ -19,8 +19,8 @@ function graph(): GraphSnapshot {
   };
   nodes.root.children = ["comp", "rec"];
   return {
-    version: 1, head: "h", repositoryId: "r", root: "root", nodes, tagIds: { t1: "folded" },
-    edges: [{ id: "e1", source: "comp", target: "rec", content: "cites\n" }],
+    version: 2, head: "h", repositoryId: "r", root: "root", nodes, tagIds: { t1: "folded" },
+    edges: [{ id: "e1", source: "comp", target: "rec", content: "cites\n" }], dangling: [],
     commits: [{ id: "c0", message: "governor init", nodes: ["root", "comp", "rec"], tagged: [] }],
   };
 }
@@ -72,4 +72,18 @@ test("the hypergraph parsers read impacts, statuses and citations", () => {
   const body = recordBody({ node_id: "n", slug_name: "s", title: "t", summary: "", parent_ids: [], created_at: "2026-01-02T03:04:05+00:00", content: rec });
   assert.equal(recordedAt(body), "2026-01-02T03:04:05+00:00");
   assert.ok(body.indexOf("## Recorded") < body.indexOf("## State Impact"));
+});
+
+test("relations come from content: impact lines, evidence lists and [rec:] mentions", () => {
+  const nodes: Record<string, GNode> = {
+    claim: node("claim", "state", { slug: "calm-oak-0001", content: claimContent("- fast [rec: brave-fox-0002]", "", [{ slug: "quiet-elk-0003", why: "measured" }, { slug: "lost-one-0009", why: "" }]) }),
+    rec: node("rec", "record", { slug: "brave-fox-0002", content: recordContent("## What", [{ label: "calm-oak-0001", delta: "a" }, { label: "calm-oak-0001", delta: "b" }, { label: "NEW thing", delta: "c" }, { label: "quiet-elk-0003", delta: "d" }], null, { at: "t" }) }),
+    rec2: node("rec2", "record", { slug: "quiet-elk-0003" }),
+  };
+  const { edges, dangling } = deriveEdges(nodes);
+  const impact = edges.find((e) => e.source === "rec" && e.target === "claim")!;
+  assert.deepEqual(parseEdge(impact.content).lines.map((l) => l.text), ["a", "b"]);
+  assert.deepEqual(edges.filter((e) => e.source === "claim").map((e) => [e.target, parseEdge(e.content).lines[0]?.text ?? ""]).sort(), [["rec", ""], ["rec2", "measured"]]);
+  assert.deepEqual(dangling.map((d) => [d.relation, d.ref]).sort(), [["cites", "lost-one-0009"], ["impact", "quiet-elk-0003"]]);
+  assert.deepEqual(mergeCitations([{ slug: "a-b-0001", why: "" }], [{ slug: "a-b-0001", why: "y" }, { slug: "c-d-0002", why: "" }]), [{ slug: "a-b-0001", why: "y" }, { slug: "c-d-0002", why: "" }]);
 });

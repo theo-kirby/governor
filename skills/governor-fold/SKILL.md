@@ -20,7 +20,8 @@ that writes it, which is what keeps parallel agents from drifting it.
      now is not), `blocked` (cannot move until something else does), or `superseded`
      (replaced; keep it for its history).
    - `cites`: every record the claim now rests on. Citations accumulate; list the new
-     ones at least.
+     ones at least. Governor writes them into the claim's `## Evidence`, after keeping
+     what it already cited, so do not write an evidence section yourself.
    A `NEW` impact becomes a new claim: give it a `new` name, a `title`, a `parent` (the
    component it belongs under, or `root` for a new component) and the same fields.
    Several records may impact one claim; write it once with all of them in mind.

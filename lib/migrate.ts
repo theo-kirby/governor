@@ -6,48 +6,22 @@
 // the governor root; the plan root becomes a plan component. Slugs, titles,
 // summaries and bodies carry over unchanged, except that `Status:` lines become tags. Each
 // record gains a `## Recorded` section carrying its Hypergraph `created_at`.
-// `## State Impact` lines become impact edges, and `## Provenance` lines and
-// `[rec: slug]` mentions become citation edges. Records inside the state graph's high-water
-// mark are tagged `folded`.
+// `## State Impact` lines and claims' `## Provenance` lines and `[rec: slug]` mentions
+// carry over as they are: governor reads relations from content (lib/model.ts). Records
+// inside the state graph's high-water mark are tagged `folded`.
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { Flywheel, withLock } from "./flywheel";
-import { ALL_TAGS, FOLDED, impactContent, ROOT_TAG, STATUSES, TAG_STYLE } from "./model";
+import { ALL_TAGS, citations, FOLDED, parseImpacts, ROOT_TAG, sectionOf, STATUSES, TAG_STYLE } from "./model";
+
+export { citations, parseImpacts, sectionOf };
 import { snapshot } from "./snapshot";
 import { GovernorError } from "./write";
 
 export type HNode = { node_id: string; slug_name: string; title: string; content: string; summary: string; parent_ids: string[]; created_at: string; artifacts?: string[] };
 
 const BATCH = 500;
-const IMPACT_RE = /^-\s*(?<target>.+?)\s+—\s+(?<delta>.+)$/;
-const NONE_RE = /^none:\s*(?<reason>.*)$/i;
-
-export function sectionOf(content: string, heading: string): string | null {
-  const re = new RegExp(`^## ${heading}\\s*$`, "im");
-  const m = re.exec(content);
-  if (!m) return null;
-  const rest = content.slice(m.index + m[0].length);
-  const next = rest.search(/^## /m);
-  return (next < 0 ? rest : rest.slice(0, next)).trim();
-}
-
-export function parseImpacts(content: string): { view: string; target: string; delta: string; isNew: boolean }[] {
-  const out: { view: string; target: string; delta: string; isNew: boolean }[] = [];
-  for (const raw of (sectionOf(content, "State Impact") ?? "").split("\n")) {
-    const line = raw.trim();
-    if (!line || NONE_RE.test(line)) continue;
-    const m = line.match(IMPACT_RE);
-    if (!m) continue;
-    let target = m.groups!.target.trim().replace(/^`|`$/g, "");
-    let view = "state";
-    if (target.includes("/")) [view, target] = [target.slice(0, target.indexOf("/")), target.slice(target.indexOf("/") + 1).trim()];
-    const isNew = /^NEW\s+/.test(target);
-    out.push({ view, target: target.replace(/^NEW\s+/, ""), delta: m.groups!.delta.trim(), isNew });
-  }
-  return out;
-}
-
 /** Hypergraph's record body, with `## Recorded` (its created_at) before `## State Impact`. */
 export function recordBody(n: HNode): string {
   const recorded = `## Recorded\n\n- at: ${n.created_at}\n${n.artifacts?.length ? n.artifacts.map((a) => `- artifact: ${a}\n`).join("") : ""}\n`;
@@ -62,16 +36,6 @@ export function claimBody(content: string): [string | null, string] {
   const m = i >= 0 ? lines[i].match(/^Status:\s*([a-z]+)\s*$/) : null;
   if (!m) return [null, content];
   return [m[1], lines.slice(i + 1).join("\n").replace(/^\n+/, "")];
-}
-
-export function citations(content: string): { slug: string; why: string }[] {
-  const out = new Map<string, string>();
-  for (const raw of (sectionOf(content, "Provenance") ?? "").split("\n")) {
-    const m = raw.trim().match(/^-\s*`?([a-z]+-[a-z]+-\d{4})`?\s*(?:—\s*(.*))?$/);
-    if (m && !out.has(m[1])) out.set(m[1], (m[2] ?? "").trim());
-  }
-  for (const m of content.matchAll(/\[rec:\s*([a-z]+-[a-z]+-\d{4})\s*\]/g)) if (!out.has(m[1])) out.set(m[1], "");
-  return [...out].map(([slug, why]) => ({ slug, why }));
 }
 
 const byTime = (a: HNode, b: HNode) =>
@@ -184,45 +148,12 @@ export async function migrateHypergraph(fw: Flywheel, from: string, log = (m: st
     for (const h of ordered(plan, [])) await place(h, "plan");
     for (const h of ordered(record, [recordRoot])) await place(h, "record");
     await commit();
-    log(`migrate   ${made} nodes placed (${secs()}s); now edges`);
-
-    let impacts = 0,
-      cites = 0,
-      unresolved = 0;
-    for (const h of record) {
-      if (h === recordRoot) continue;
-      const grouped = new Map<string, string[]>();
-      for (const i of parseImpacts(h.content)) {
-        if (i.isNew) continue;
-        const t = bySlug.get(i.target);
-        const tid = t ? ids.get(t.node_id) : undefined;
-        if (!t || kindOf.get(t.node_id) === "record" || !tid || tid === root) {
-          unresolved++;
-          continue;
-        }
-        grouped.set(tid, [...(grouped.get(tid) ?? []), i.delta]);
-      }
-      for (const [t, deltas] of grouped) {
-        await call("repo:edge:add", root, ids.get(h.node_id)!, t, "--content-file", await tmp(impactContent(deltas)));
-        impacts++;
-        if (ops >= BATCH) await commit();
-      }
-    }
-    for (const h of [...state, ...plan]) {
-      const src = ids.get(h.node_id);
-      if (!src || src === root) continue;
-      for (const c of citations(h.content)) {
-        const r = bySlug.get(c.slug);
-        if (!r || kindOf.get(r.node_id) !== "record" || r === recordRoot) {
-          unresolved++;
-          continue;
-        }
-        await call("repo:edge:add", root, src, ids.get(r.node_id)!, "--content-file", await tmp(c.why ? `cites: ${c.why.replace(/\s+/g, " ")}\n` : "cites\n"));
-        cites++;
-        if (ops >= BATCH) await commit();
-      }
-    }
-    await commit(true);
+    
+    await commit();
+    const s = await snapshot(fw, { cache: false });
+    const impacts = s.edges.filter((e) => e.id.startsWith("impact:")).length;
+    const cites = s.edges.length - impacts;
+    const unresolved = s.dangling.length;
     log(`migrate   done: ${made + 1} nodes, ${impacts} impact edges, ${cites} citation edges, ${folded.size} folded, ${unresolved} unresolved references (${secs()}s, ${fw.calls} calls)`);
   });
   await rm(tmpDir, { recursive: true, force: true });

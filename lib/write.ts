@@ -11,7 +11,8 @@ import {
   claimContent,
   FOLD_PREFIX,
   FOLDED,
-  impactContent,
+  citations,
+  mergeCitations,
   KEBAB_RE,
   RECORD_PREFIX,
   recordContent,
@@ -172,15 +173,7 @@ export async function record(fw: Flywheel, input: RecordInput): Promise<{ slug: 
     for (const p of [...new Set(input.parents.map((p) => resolve(s, p)!.id))]) await fw.call("repo:lineage:add", p, id);
     await fw.call("repo:containment:assign", s.root!, id);
     await fw.call("repo:node-tag:assign", s.root!, id, tagId(s, "record"));
-    const grouped = new Map<string, string[]>();
-    for (const i of input.impacts) {
-      const t = resolve(s, i.target)!.id;
-      grouped.set(t, [...(grouped.get(t) ?? []), i.delta]);
-    }
-    for (const [t, deltas] of grouped)
-      await fw.call("repo:edge:add", s.root!, id, t, "--content-file", await tmp("edge.txt", impactContent(deltas)));
-    // new claims have no node to point at yet: they live as `NEW <name> — <delta>` lines
-    // in the generated `## State Impact`, which the fold reads (docs/CONVENTIONS.md)
+    // the impacts are the generated `## State Impact` lines; the snapshot derives edges from them
     return id;
   });
   return { slug, id: result, head };
@@ -259,7 +252,6 @@ export async function fold(fw: Flywheel, plan: FoldPlan): Promise<{ head: string
     if (problems.length) throw new GovernorError(problems.map((p) => `- ${p}`).join("\n"));
     const created: Record<string, string> = {};
     const taken = new Set(bySlug(s).keys());
-    const edgeFrom = new Map(s.edges.map((e) => [`${e.source}>${e.target}`, e]));
     const view = plan.view && plan.view !== "state" ? ` (${plan.view})` : "";
     const msg = `${FOLD_PREFIX}${view}: ${plan.folded.length} record(s), ${plan.claims.length} claim(s)`;
     const { head } = await transaction(fw, msg, async (tmp) => {
@@ -273,7 +265,8 @@ export async function fold(fw: Flywheel, plan: FoldPlan): Promise<{ head: string
           if (!parentId) continue;
           const slug = mintSlug(taken);
           taken.add(slug);
-          const id = await createNode(fw, tmp, { title: c.title!, slug, content: claimContent(c.current, c.negative ?? "") });
+          const evidence = (c.cites ?? []).map((r) => ({ slug: resolve(s, r)!.slug, why: "" }));
+          const id = await createNode(fw, tmp, { title: c.title!, slug, content: claimContent(c.current, c.negative ?? "", evidence) });
           await fw.call("repo:lineage:add", parentId, id);
           await fw.call("repo:containment:assign", s.root!, id);
           await fw.call("repo:node-tag:assign", s.root!, id, tagId(s, c.kind ?? plan.view ?? "state"));
@@ -284,7 +277,9 @@ export async function fold(fw: Flywheel, plan: FoldPlan): Promise<{ head: string
         const node: GNode | null = c.slug ? resolve(s, c.slug) : null;
         const id = node?.id ?? ids.get(c.new!)!;
         if (node) {
-          const content = claimContent(c.current, c.negative ?? "");
+          // citations accumulate: what the claim cited before, then what this fold adds
+          const added = (c.cites ?? []).map((r) => ({ slug: resolve(s, r)!.slug, why: "" }));
+          const content = claimContent(c.current, c.negative ?? "", mergeCitations(citations(node.content), added));
           if (content !== node.content)
             await fw.call("repo:node:set", id, "--field", "content", "--value-file", await tmp("content.md", content));
           if (c.title && c.title !== node.title)
@@ -294,13 +289,6 @@ export async function fold(fw: Flywheel, plan: FoldPlan): Promise<{ head: string
         if (!c.component && c.status && had !== c.status) {
           if (had) await fw.call("repo:node-tag:remove", s.root!, id, tagId(s, had));
           await fw.call("repo:node-tag:assign", s.root!, id, tagId(s, c.status));
-        }
-        for (const r of new Set(c.cites ?? [])) {
-          const rid = resolve(s, r)!.id;
-          if (!edgeFrom.has(`${id}>${rid}`)) {
-            await fw.call("repo:edge:add", s.root!, id, rid, "--content-file", await tmp("edge.txt", "cites\n"));
-            edgeFrom.set(`${id}>${rid}`, { id: "", source: id, target: rid, content: "cites" });
-          }
         }
       }
       const folded = tagId(s, FOLDED);
