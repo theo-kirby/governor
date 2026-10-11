@@ -22,11 +22,16 @@ import { GovernorError } from "./write";
 export type HNode = { node_id: string; slug_name: string; title: string; content: string; summary: string; parent_ids: string[]; created_at: string; artifacts?: string[] };
 
 const BATCH = 500;
-/** Hypergraph's record body, with `## Recorded` (its created_at) before `## State Impact`. */
+/** Hypergraph's record body, with `## Recorded` (its created_at) before `## State Impact`,
+ *  and its impact lines in governor's form (`- target: X — d` becomes `- X — d`). */
 export function recordBody(n: HNode): string {
   const recorded = `## Recorded\n\n- at: ${n.created_at}\n${n.artifacts?.length ? n.artifacts.map((a) => `- artifact: ${a}\n`).join("") : ""}\n`;
   const at = n.content.search(/^## State Impact\s*$/m);
-  return at < 0 ? `${n.content.trimEnd()}\n\n${recorded}` : n.content.slice(0, at) + recorded + n.content.slice(at);
+  if (at < 0) return `${n.content.trimEnd()}\n\n${recorded}`;
+  const rest = n.content.slice(at);
+  const end = rest.slice(1).search(/^## /m);
+  const impact = end < 0 ? rest : rest.slice(0, end + 1);
+  return n.content.slice(0, at) + recorded + impact.replace(/^- target:\s*/gm, "- ") + (end < 0 ? "" : rest.slice(end + 1));
 }
 
 /** A claim's body without its `Status:` line → [status, body]. */

@@ -72,6 +72,12 @@ test("the hypergraph parsers read impacts, statuses and citations", () => {
   const body = recordBody({ node_id: "n", slug_name: "s", title: "t", summary: "", parent_ids: [], created_at: "2026-01-02T03:04:05+00:00", content: rec });
   assert.equal(recordedAt(body), "2026-01-02T03:04:05+00:00");
   assert.ok(body.indexOf("## Recorded") < body.indexOf("## State Impact"));
+  const old = recordBody({ node_id: "n", slug_name: "s", title: "t", summary: "", parent_ids: [], created_at: "t", content: "## What\n- target: x\n\n## State Impact\n\n- target: calm-oak-0001 — d\n- target: NEW thing — e\n\n## Notes\n- target: keep\n" });
+  assert.match(old, /^- calm-oak-0001 — d$/m);
+  assert.deepEqual(newClaims(old), [{ name: "thing", delta: "e" }]);
+  assert.match(old, /^## What\n- target: x$/m);
+  assert.match(old, /^- target: keep$/m);
+  assert.deepEqual(parseImpacts("## State Impact\n\n- target: calm-oak-0001 — d\n").map((i) => i.target), ["calm-oak-0001"]);
 });
 
 test("relations come from content: impact lines, evidence lists and [rec:] mentions", () => {
