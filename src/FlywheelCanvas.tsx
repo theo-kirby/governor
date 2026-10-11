@@ -9,6 +9,37 @@ const tagColor = (id: string) => {
   for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) >>> 0;
   return `hsl(${hash % 360} 60% 58%)`;
 };
+const ringStyles = [
+  "arcs",
+  "ticks",
+  "bands",
+  "mist",
+  "ribbons",
+  "terraces",
+  "soft",
+  "dotted",
+  "dashed",
+  "none",
+] as const;
+type RingStyle = (typeof ringStyles)[number];
+const styleNames: Record<RingStyle, string> = {
+  arcs: "Occupied arcs",
+  ticks: "Orbital ticks",
+  bands: "Soft bands",
+  mist: "Mist bands",
+  ribbons: "Ribbon edges",
+  terraces: "Terraced bands",
+  soft: "Fine solid rings",
+  dotted: "Dotted rings",
+  dashed: "Dashed rings",
+  none: "No guides",
+};
+const bandStyles = new Set<RingStyle>(["bands", "mist", "ribbons", "terraces"]);
+const readLevel = (key: string, fallback: number, min: number, max: number) => {
+  const raw = new URLSearchParams(location.search).get(key);
+  const value = raw === null ? NaN : Number(raw);
+  return Number.isFinite(value) ? clamp(value, min, max) : fallback;
+};
 type Camera = Point & { scale: number };
 type Props = {
   nodes: GraphNode[];
@@ -20,42 +51,45 @@ type Props = {
 export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [expanded, setExpanded] = useState(new Set<string>());
-  const [fold, setFold] = useState(true),
-    [guides, setGuides] = useState(true),
-    [citations, setCitations] = useState(true),
-    [labels, setLabels] = useState(true);
-  const [panel, setPanel] = useState(false),
-    [selected, setSelected] = useState<string | null>(null),
-    [search, setSearch] = useState("");
-  const [zoom, setZoom] = useState(100);
-  const commands = useRef({
-    fit: () => {},
-    focus: (_id: string) => {},
-    zoom: (_factor: number) => {},
+  const [ringStyle, setRingStyle] = useState<RingStyle>(() => {
+    const requested = new URLSearchParams(location.search).get("ringStyle");
+    return ringStyles.includes(requested as RingStyle)
+      ? (requested as RingStyle)
+      : "dotted";
   });
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [ink, setInk] = useState(() => readLevel("ringInk", 1, 0.25, 3));
+  const [bandWidth, setBandWidth] = useState(() =>
+    readLevel("bandWidth", 1, 0.4, 2),
+  );
+  const chooseStyle = (style: RingStyle) => {
+    const url = new URL(location.href);
+    url.searchParams.set("ringStyle", style);
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    setRingStyle(style);
+  };
+  const changeLevel = (key: "ringInk" | "bandWidth", value: number) => {
+    const url = new URL(location.href);
+    url.searchParams.set(key, String(value));
+    history.replaceState(null, "", url.pathname + url.search + url.hash);
+    if (key === "ringInk") setInk(value);
+    else setBandWidth(value);
+  };
+  const [selected, setSelected] = useState<string | null>(null);
   const scene = useMemo(() => {
     const start = performance.now();
-    const projected = projectFlywheel(nodes, edges, expanded, fold);
+    const projected = projectFlywheel(nodes, edges, expanded);
     return {
       ...projected,
       ...layoutFlywheel(projected.nodes, projected.edges),
       milliseconds: performance.now() - start,
     };
-  }, [nodes, edges, expanded, fold]);
+  }, [nodes, edges, expanded]);
   useEffect(() => onLayout?.(scene.milliseconds), [scene, onLayout]);
-  const selection = nodes.find((n) => n.id === selected);
-  const results = search.trim()
-    ? nodes
-        .filter((n) => n.title.toLowerCase().includes(search.toLowerCase()))
-        .slice(0, 12)
-    : [];
-  const options = useRef({ guides, citations, labels, selected, search });
-  options.current = { guides, citations, labels, selected, search };
+  const options = useRef({ selected, ringStyle, ink, bandWidth });
+  options.current = { selected, ringStyle, ink, bandWidth };
   const redraw = useRef(() => {});
-  useEffect(
-    () => redraw.current(),
-    [guides, citations, labels, selected, search],
-  );
+  useEffect(() => redraw.current(), [selected, ringStyle, ink, bandWidth]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -65,12 +99,24 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
       frame = 0,
       disposed = false,
       hover: string | null = null;
-    let camera: Camera = { x: 0, y: 0, scale: 1 },
-      baseScale = 1;
+    let camera: Camera = { x: 0, y: 0, scale: 1 };
     const positions = new Map(
       [...scene.positions].map(([id, p]) => [id, { ...p }]),
     );
     const byId = new Map(scene.nodes.map((n) => [n.id, n]));
+    // Membership follows the layout's generation; dragging only changes its angle.
+    const occupied = new Map(
+      scene.components.map((c) => {
+        const rings = new Map(c.rings.map((r) => [r, [] as string[]]));
+        for (const n of c.nodes) {
+          const p = positions.get(n.id)!;
+          const radius = Math.hypot(p.x - c.center.x, p.y - c.center.y);
+          const r = c.rings.find((r) => Math.abs(r - radius) < 0.01);
+          if (r !== undefined) rings.get(r)!.push(n.id);
+        }
+        return [c.id, rings] as const;
+      }),
+    );
 
     const roots = new Set(scene.components.flatMap((c) => c.roots));
     const adjacency = new Map(
@@ -90,13 +136,12 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     };
     const fit = (center: Point = { x: 0, y: 0 }, radius = scene.extent) => {
       camera.scale = clamp(
-        Math.min(width - 120, height - 180) / (2 * radius),
+        Math.min(width - 96, height - 96) / (2 * radius),
         0.00001,
         1.5,
       );
       camera.x = width / 2 - center.x * camera.scale;
-      camera.y = (height + 30) / 2 - center.y * camera.scale;
-      if (radius === scene.extent) baseScale = camera.scale;
+      camera.y = height / 2 - center.y * camera.scale;
       invalidate();
     };
     const zoomAt = (factor: number, x = width / 2, y = height / 2) => {
@@ -132,6 +177,9 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         color: string,
         dash: number[],
         alpha: number,
+        strokeWidth = 0.8,
+        start = 0,
+        end = Math.PI * 2,
       ) => {
         const p = point(center),
           screenRadius = r * scale;
@@ -143,7 +191,7 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
           Math.hypot(p.x - width, p.y - height),
         );
         if (
-          screenRadius > farthest + 2 ||
+          screenRadius > farthest + strokeWidth / 2 + 2 ||
           p.x + screenRadius < 0 ||
           p.y + screenRadius < 0 ||
           p.x - screenRadius > width ||
@@ -151,32 +199,223 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         )
           return;
         ctx.strokeStyle = color;
-        ctx.globalAlpha = alpha;
-        ctx.lineWidth = 1.05;
+        ctx.globalAlpha = clamp(alpha * opts.ink, 0, 1);
+        ctx.lineWidth = strokeWidth;
         ctx.setLineDash(dash);
-        circle(p.x, p.y, r * scale);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r * scale, start, end);
         ctx.stroke();
       };
-      if (opts.guides) {
+      if (opts.ringStyle !== "none") {
+        const style = opts.ringStyle;
+        const dash =
+          style === "dotted" ? [1, 7] : style === "dashed" ? [4, 10] : [];
+        const opacity =
+          style === "soft" ? 0.14 : style === "dotted" ? 0.26 : 0.2;
         for (const r of scene.orbits)
-          ring({ x: 0, y: 0 }, r, "#707070", [8, 10], 0.55);
+          ring({ x: 0, y: 0 }, r, "#999999", [3, 16], 0.22);
         for (const c of scene.components) {
           if (c.radius * scale > 28) {
-            for (const r of c.rings) ring(c.center, r, "#7db5a5", [5, 3], 0.35);
-            ring(
-              c.center,
-              c.radius,
-              c.roots.length > 1 ? "#5b8def" : "#d2ab2f",
-              [10, 4, 2, 4],
-              0.6,
-            );
+            // Closely packed generations should read as guides, not a striped disk.
+            for (let i = 0; i < c.rings.length; i++) {
+              const r = c.rings[i];
+              const separation = (r - (c.rings[i - 1] ?? 0)) * scale;
+              const densityFade = clamp(separation / 10, 0.35, 1);
+              if (
+                style === "arcs" ||
+                style === "ticks" ||
+                bandStyles.has(style)
+              ) {
+                const tau = Math.PI * 2;
+                const angles = (occupied.get(c.id)?.get(r) ?? []).map((id) => {
+                  const p = positions.get(id)!;
+                  return (
+                    (Math.atan2(p.y - c.center.y, p.x - c.center.x) + tau) % tau
+                  );
+                });
+                const half = Math.min(
+                  0.24,
+                  Math.max(0.025, (36 * scale + 8) / (r * scale)),
+                );
+                if (style === "ticks") {
+                  const p = point(c.center),
+                    radius = r * scale;
+                  ctx.setLineDash([]);
+                  ctx.lineWidth = 0.8;
+                  ctx.strokeStyle = "#aaaaaa";
+                  ctx.globalAlpha = clamp(0.3 * densityFade * opts.ink, 0, 1);
+                  for (const angle of angles)
+                    for (const a of [angle - half, angle + half]) {
+                      const x = p.x + Math.cos(a) * radius,
+                        y = p.y + Math.sin(a) * radius;
+                      if (x < -8 || y < -8 || x > width + 8 || y > height + 8)
+                        continue;
+                      ctx.beginPath();
+                      ctx.moveTo(x - Math.cos(a) * 2.5, y - Math.sin(a) * 2.5);
+                      ctx.lineTo(x + Math.cos(a) * 2.5, y + Math.sin(a) * 2.5);
+                      ctx.stroke();
+                    }
+                } else {
+                  // Merge occupied intervals and split at the seam, leaving empty sectors open.
+                  const intervals: number[][] = [];
+                  for (const angle of angles) {
+                    const a = angle - half,
+                      b = angle + half;
+                    if (a < 0) intervals.push([a + tau, tau], [0, b]);
+                    else if (b > tau) intervals.push([a, tau], [0, b - tau]);
+                    else intervals.push([a, b]);
+                  }
+                  intervals.sort((a, b) => a[0] - b[0]);
+                  const merged: number[][] = [];
+                  for (const interval of intervals) {
+                    const last = merged.at(-1);
+                    if (last && interval[0] <= last[1])
+                      last[1] = Math.max(last[1], interval[1]);
+                    else merged.push([...interval]);
+                  }
+                  for (const [a, b] of merged) {
+                    const band =
+                      Math.min(24, separation * 0.7) * opts.bandWidth;
+                    if (style === "bands") {
+                      ring(
+                        c.center,
+                        r,
+                        "#bbbbbb",
+                        [],
+                        0.035 * densityFade,
+                        band + 5,
+                        a,
+                        b,
+                      );
+                      ring(
+                        c.center,
+                        r,
+                        "#bbbbbb",
+                        [],
+                        0.06 * densityFade,
+                        band,
+                        a,
+                        b,
+                      );
+                    } else if (style === "mist") {
+                      // Layered translucent strokes create feathered edges without canvas blur.
+                      for (let layer = 5; layer >= 1; layer--)
+                        ring(
+                          c.center,
+                          r,
+                          "#cccccc",
+                          [],
+                          0.018 * densityFade,
+                          band * (0.4 + layer * 0.35),
+                          a,
+                          b,
+                        );
+                    } else if (style === "ribbons") {
+                      ring(
+                        c.center,
+                        r,
+                        "#aaaaaa",
+                        [],
+                        0.045 * densityFade,
+                        band,
+                        a,
+                        b,
+                      );
+                      const inset = band / (2 * scale);
+                      ring(
+                        c.center,
+                        Math.max(0.1, r - inset),
+                        "#aaaaaa",
+                        [],
+                        0.24 * densityFade,
+                        0.65,
+                        a,
+                        b,
+                      );
+                      ring(
+                        c.center,
+                        r + inset,
+                        "#aaaaaa",
+                        [],
+                        0.24 * densityFade,
+                        0.65,
+                        a,
+                        b,
+                      );
+                    } else if (style === "terraces") {
+                      // Alternate broad shelves and hairlines to distinguish neighboring generations.
+                      const shelf =
+                        Math.min(36, separation * 0.9) * opts.bandWidth;
+                      const center = Math.max(0.1, r - shelf / (2 * scale));
+                      ring(
+                        c.center,
+                        center,
+                        "#bbbbbb",
+                        [],
+                        (i % 2 ? 0.035 : 0.085) * densityFade,
+                        shelf,
+                        a,
+                        b,
+                      );
+                      ring(
+                        c.center,
+                        r,
+                        "#bbbbbb",
+                        [],
+                        0.2 * densityFade,
+                        0.7,
+                        a,
+                        b,
+                      );
+                    }
+                    ring(
+                      c.center,
+                      r,
+                      "#aaaaaa",
+                      [],
+                      (style === "arcs" ? 0.3 : style === "bands" ? 0.12 : 0) *
+                        densityFade,
+                      0.75,
+                      a,
+                      b,
+                    );
+                  }
+                }
+              } else {
+                ring(
+                  c.center,
+                  r,
+                  "#aaaaaa",
+                  dash,
+                  opacity * densityFade,
+                  style === "soft" ? 0.65 : 0.8,
+                );
+              }
+            }
+            if (
+              style === "arcs" ||
+              style === "ticks" ||
+              bandStyles.has(style)
+            ) {
+              // Four quiet brackets suggest the component boundary without enclosing it.
+              for (let i = 0; i < 4; i++)
+                ring(
+                  c.center,
+                  c.radius,
+                  "#aaaaaa",
+                  [],
+                  0.24,
+                  0.8,
+                  (i * Math.PI) / 2 - 0.09,
+                  (i * Math.PI) / 2 + 0.09,
+                );
+            } else ring(c.center, c.radius, "#aaaaaa", [], 0.3, 0.85);
           }
         }
       }
       ctx.setLineDash([]);
       ctx.globalAlpha = 1;
       for (const edge of scene.edges) {
-        if (edge.relation === "citation" && !opts.citations) continue;
         const a = positions.get(edge.source),
           b = positions.get(edge.target);
         if (!a || !b) continue;
@@ -328,7 +567,7 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         }
         ctx.globalAlpha = 1;
       }
-      if (opts.labels) {
+      {
         // Priority and collision checks keep overview labels separate from detail labels.
         for (const c of scene.components) {
           if (scale > 0.59) continue;
@@ -350,10 +589,7 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         );
         for (const n of ordered) {
           const focus = n.id === projectedActive;
-          const match =
-            opts.search &&
-            n.title.toLowerCase().includes(opts.search.toLowerCase());
-          if (!focus && !match && scale < 0.16) continue;
+          if (!focus && scale < 0.16) continue;
           const p = point(positions.get(n.id)!);
           if (p.x < 0 || p.x > width || p.y < 0 || p.y > height) continue;
           const group = scene.groups.get(n.id);
@@ -375,7 +611,9 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
       canvas.dataset.groups = String(scene.groups.size);
       canvas.dataset.components = String(scene.components.length);
       canvas.dataset.zoom = String(scale);
-      setZoom(Math.round((scale / baseScale) * 100));
+      canvas.dataset.ringStyle = opts.ringStyle;
+      canvas.dataset.ringInk = String(opts.ink);
+      canvas.dataset.bandWidth = String(opts.bandWidth);
     }
     function invalidate() {
       if (!frame && !disposed) frame = requestAnimationFrame(draw);
@@ -393,18 +631,6 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
     resize();
-    commands.current = {
-      fit: () => fit(),
-      zoom: (factor) => zoomAt(factor),
-      focus: (id) => {
-        const mapped = scene.owner.get(id) ?? id;
-        const p = positions.get(mapped);
-        if (p) {
-          fit(p, 260);
-          setSelected(id);
-        }
-      },
-    };
     const local = (e: PointerEvent | WheelEvent) => {
       const r = canvas.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -519,7 +745,16 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
         e.preventDefault();
       } else if (e.key === "Escape") {
         setSelected(null);
-        setSearch("");
+      } else if (e.key.toLowerCase() === "r") {
+        const next =
+          ringStyles[
+            (ringStyles.indexOf(options.current.ringStyle) + 1) %
+              ringStyles.length
+          ];
+        const url = new URL(location.href);
+        url.searchParams.set("ringStyle", next);
+        history.replaceState(null, "", url.pathname + url.search + url.hash);
+        setRingStyle(next);
       } else if (e.key === "c") {
         setExpanded(new Set());
       } else if (e.key === "+" || e.key === "=") zoomAt(1.25);
@@ -549,140 +784,67 @@ export function FlywheelCanvas({ nodes, edges, onLayout }: Props) {
     };
   }, [scene, nodes]);
 
-  const radial = new URL(location.href);
-  radial.searchParams.delete("renderer");
   return (
-    <section className="fw-study" aria-label="Flywheel live-view study">
+    <section className="fw-study" aria-label="Flywheel graph">
       <canvas
         ref={canvasRef}
         className="fw-canvas"
         tabIndex={0}
-        aria-label={`Interactive orbital graph. ${nodes.length} source nodes. Scroll to zoom, drag to pan or move nodes. F fits, C folds, Escape clears selection.`}
+        aria-label={`Interactive orbital graph. ${nodes.length} source nodes. Scroll to zoom, drag to pan or move nodes. F fits, C folds, R cycles ring styles, Escape clears selection.`}
       />
-      <header className="fw-header">
-        <span className="fw-wordmark">
-          Flywheel <small>LOCAL STUDY</small>
-        </span>
-        <nav>
-          <a href={radial.pathname + radial.search}>RADIAL EXPERIMENT</a>
-          <button onClick={() => commands.current.fit()}>FIT GRAPH</button>
-        </nav>
-      </header>
-      <button
-        className="fw-view-toggle"
-        aria-label="VIEW"
-        onClick={() => setPanel(!panel)}
-        aria-expanded={panel}
-      >
-        {panel ? "⌄" : "›"} VIEW
-      </button>
-      <span className="fw-zoom">ZOOM {zoom.toLocaleString()}%</span>
-      {panel && (
-        <aside className="fw-view-panel" aria-label="View controls">
-          <label>
-            Find a node
-            <input
-              placeholder="Search titles…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-          {results.map((n) => (
-            <button
-              className="fw-result"
-              key={n.id}
-              onClick={() => commands.current.focus(n.id)}
+      <aside className="fw-ring-panel" aria-label="Ring style debug controls">
+        <button
+          className="fw-ring-heading"
+          aria-expanded={panelOpen}
+          onClick={() => setPanelOpen(!panelOpen)}
+        >
+          <span>RING LAB</span>
+          <span>{panelOpen ? "−" : "+"}</span>
+        </button>
+        {panelOpen && (
+          <div className="fw-ring-settings">
+            <select
+              aria-label="Ring style"
+              value={ringStyle}
+              onChange={(e) => chooseStyle(e.target.value as RingStyle)}
             >
-              {n.title}
-            </button>
-          ))}
-          <label>
-            <input
-              type="checkbox"
-              checked={guides}
-              onChange={(e) => setGuides(e.target.checked)}
-            />{" "}
-            Orbital guides
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={fold}
-              onChange={(e) => setFold(e.target.checked)}
-            />{" "}
-            Fold runs & leaf fans
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={citations}
-              onChange={(e) => setCitations(e.target.checked)}
-            />{" "}
-            Citation edges
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={labels}
-              onChange={(e) => setLabels(e.target.checked)}
-            />{" "}
-            Labels
-          </label>
-          <div className="fw-actions">
-            <button onClick={() => commands.current.zoom(1.5)}>+</button>
-            <button onClick={() => commands.current.zoom(1 / 1.5)}>−</button>
-            <button
-              onClick={() => {
-                setExpanded(new Set());
-                commands.current.fit();
-              }}
-            >
-              Reset
-            </button>
+              {ringStyles.map((style) => (
+                <option key={style} value={style}>
+                  {styleNames[style]}
+                </option>
+              ))}
+            </select>
+            <label>
+              Ink <output>{ink.toFixed(2)}×</output>
+              <input
+                aria-label="Ring ink"
+                type="range"
+                min="0.25"
+                max="3"
+                step="0.05"
+                value={ink}
+                disabled={ringStyle === "none"}
+                onChange={(e) => changeLevel("ringInk", Number(e.target.value))}
+              />
+            </label>
+            <label>
+              Band width <output>{bandWidth.toFixed(1)}×</output>
+              <input
+                aria-label="Band width"
+                type="range"
+                min="0.4"
+                max="2"
+                step="0.1"
+                value={bandWidth}
+                disabled={!bandStyles.has(ringStyle)}
+                onChange={(e) =>
+                  changeLevel("bandWidth", Number(e.target.value))
+                }
+              />
+            </label>
           </div>
-          <p>
-            {nodes.length.toLocaleString()} nodes ·{" "}
-            {edges.length.toLocaleString()} edges
-            <br />
-            {scene.nodes.length.toLocaleString()} displayed ·{" "}
-            {scene.groups.size} folds · {scene.components.length} graphs
-          </p>
-        </aside>
-      )}
-      {selection && (
-        <aside className="fw-detail" aria-label="Selected node">
-          <button
-            className="fw-close"
-            onClick={() => setSelected(null)}
-            aria-label="Close node"
-          >
-            ×
-          </button>
-          <small>NODE</small>
-          <h2>{selection.title}</h2>
-          <code>{selection.id}</code>
-          <div className="fw-tags">
-            {selection.tags?.map((t) => (
-              <span key={t.id} style={{ borderColor: tagColor(t.id) }}>
-                {t.name}
-              </span>
-            ))}
-          </div>
-          <p>
-            {edges.filter((e) => e.target === selection.id).length} incoming ·{" "}
-            {edges.filter((e) => e.source === selection.id).length} outgoing
-          </p>
-          <button onClick={() => commands.current.focus(selection.id)}>
-            Center on node
-          </button>
-        </aside>
-      )}
-      <footer className="fw-help">
-        Scroll or pinch to zoom · Drag to move through the graph
-        <br />
-        Click a graph’s outline to zoom to it · Click stacked circles to expand
-        <br />F to fit · C to fold · Local, read-only graph
-      </footer>
+        )}
+      </aside>
     </section>
   );
 }

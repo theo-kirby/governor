@@ -66,6 +66,11 @@ export function DebugView() {
   useEffect(() => {
     const query = debugQuery(settings);
     if (renderer) query.set("renderer", renderer);
+    const current = new URLSearchParams(location.search);
+    for (const key of ["ringStyle", "ringInk", "bandWidth"]) {
+      const value = current.get(key);
+      if (value !== null) query.set(key, value);
+    }
     history.replaceState(null, "", `?${query}`);
     setCopied(false);
   }, [settings]);
@@ -312,8 +317,8 @@ export function DebugView() {
               </>
             ) : (
               <p className="debug-note">
-                Flywheel study: use View on the canvas for folding, guides,
-                citations, and labels.
+                Flywheel study: click stacked circles to expand; press C to fold
+                and F to fit.
               </p>
             )}
             {!fixedSize && slider("Tagged fraction", "tagRate", 0, 1, 0.05)}

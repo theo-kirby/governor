@@ -2,9 +2,6 @@
   position: fixed;
   inset: 0;
   background: #131313;
-  color: #ededed;
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 12px;
 }
 .fw-canvas {
   position: absolute;
@@ -19,235 +16,65 @@
   outline: 1px solid #666;
   outline-offset: -1px;
 }
-.fw-header {
-  position: absolute;
-  top: 24px;
-  left: 32px;
-  right: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: none;
-}
-.fw-wordmark {
-  font-family: Georgia, serif;
-  font-size: 26px;
-  letter-spacing: -1px;
-}
-.fw-wordmark small {
-  display: inline-block;
-  vertical-align: top;
-  margin: 4px 0 0 6px;
-  padding: 2px 4px;
-  border: 1px solid #444;
-  border-radius: 5px;
-  font: 7px system-ui;
-  letter-spacing: 1px;
-  color: #aaa;
-}
-.fw-header nav {
-  display: flex;
-  align-items: center;
-  gap: 26px;
-  pointer-events: auto;
-}
-.fw-header a {
-  color: #ddd;
-  text-decoration: none;
-  font-size: 10px;
-  letter-spacing: 1.2px;
-}
-.fw-study button {
-  font: inherit;
-  cursor: pointer;
-  color: #ddd;
-  border: 1px solid #3a3a3a;
-  border-radius: 5px;
-  background: #191919;
-  padding: 7px 10px;
-}
-.fw-study button:hover {
-  background: #292929;
-}
-.fw-header button {
-  font-size: 10px;
-  letter-spacing: 1px;
-  border-radius: 20px;
-  padding: 12px 17px;
-}
-.fw-view-toggle {
-  position: absolute;
-  top: 90px;
-  left: 24px;
-  border: 0 !important;
-  background: transparent !important;
-  letter-spacing: 1.5px;
-  font-size: 10px !important;
-  color: #999 !important;
-}
-.fw-zoom {
-  position: absolute;
-  top: 102px;
-  right: 32px;
-  color: #777;
-  font-size: 10px;
-  letter-spacing: 1px;
-  pointer-events: none;
-}
-.fw-help {
-  position: absolute;
-  bottom: 24px;
-  left: 24px;
-  line-height: 20px;
-  color: #555;
-  pointer-events: none;
-}
-.fw-view-panel {
-  position: absolute;
-  left: 24px;
-  top: 125px;
-  width: 264px;
-  padding: 18px;
-  background: #191919f5;
-  border: 1px solid #333;
-  border-radius: 8px;
-  max-height: calc(100% - 200px);
-  overflow: auto;
-  box-shadow: 0 12px 40px #0005;
-}
-.fw-view-panel label {
-  display: block;
-  margin-bottom: 16px;
-  color: #aaa;
-}
-.fw-view-panel input[type="text"],
-.fw-view-panel input:not([type]) {
-  display: block;
-  width: 100%;
-  margin-top: 8px;
-  background: #111;
-  border: 1px solid #444;
-  padding: 9px;
-  border-radius: 4px;
-  color: #eee;
-}
-.fw-view-panel input[type="checkbox"] {
-  accent-color: #aaa;
-  vertical-align: middle;
-  margin-right: 8px;
-}
-.fw-result {
-  display: block;
-  width: 100%;
-  text-align: left;
-  margin-bottom: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.fw-actions {
-  display: flex;
-  gap: 8px;
-}
-.fw-view-panel p {
-  font-size: 11px;
-  line-height: 1.8;
-  color: #777;
-  margin-bottom: 0;
-}
-.fw-detail {
-  position: absolute;
-  right: 24px;
-  top: 140px;
-  width: 300px;
-  max-width: calc(100% - 48px);
-  padding: 24px;
-  background: #191919f5;
-  border: 1px solid #383838;
-  border-radius: 8px;
-  overflow-wrap: anywhere;
-}
-.fw-detail small {
-  font-size: 9px;
-  letter-spacing: 2px;
-  color: #777;
-}
-.fw-detail h2 {
-  font-size: 17px;
-  line-height: 1.4;
-  font-weight: 500;
-}
-.fw-detail code {
-  font-size: 10px;
-  color: #777;
-}
-.fw-detail p {
-  color: #999;
-}
-.fw-close {
-  position: absolute;
-  right: 8px;
-  top: 8px;
-  border: 0 !important;
-  font-size: 20px !important;
-  padding: 2px 7px !important;
-}
-.fw-tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 20px;
-}
-.fw-tags span {
-  border: 1px solid;
-  border-radius: 20px;
-  padding: 4px 8px;
-  font-size: 10px;
-}
-@media (max-width: 600px) {
-  .fw-header {
-    left: 20px;
-    right: 20px;
-  }
-  .fw-wordmark {
-    font-size: 22px;
-  }
-  .fw-header nav {
-    gap: 10px;
-  }
-  .fw-header a {
-    font-size: 8px;
-  }
-  .fw-header button {
-    padding: 8px;
-    font-size: 8px;
-  }
-  .fw-wordmark small {
-    display: none;
-  }
-  .fw-help {
-    font-size: 10px;
-    left: 20px;
-    right: 15px;
-  }
-  .fw-detail {
-    top: 135px;
-  }
-  .fw-zoom {
-    right: 20px;
-  }
-}
 @media (min-width: 800px) {
   .debug-workspace.panel-open .fw-study {
     left: 308px;
   }
 }
-.debug-workspace:not(.panel-open) .fw-header {
-  left: 220px;
+.fw-ring-panel {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  width: 182px;
+  max-width: calc(100% - 28px);
+  background: #191919ed;
+  border: 1px solid #333;
+  border-radius: 7px;
+  color: #999;
+  font:
+    10px system-ui,
+    sans-serif;
 }
-.debug-workspace .fw-view-toggle {
-  top: 72px;
+.fw-ring-heading {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: #aaa;
+  font: inherit;
+  letter-spacing: 1.3px;
+  cursor: pointer;
 }
-.debug-workspace .fw-view-panel {
-  top: 110px;
+.fw-ring-settings {
+  padding: 0 12px 10px;
+}
+.fw-ring-settings select {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #383838;
+  border-radius: 4px;
+  background: #202020;
+  color: #ccc;
+  font: inherit;
+}
+.fw-ring-settings label {
+  display: block;
+  margin-top: 10px;
+}
+.fw-ring-settings output {
+  float: right;
+  color: #777;
+  font-variant-numeric: tabular-nums;
+}
+.fw-ring-settings input {
+  display: block;
+  width: 100%;
+  margin: 5px 0 0;
+  accent-color: #999;
+  height: 12px;
+}
+.fw-ring-settings input:disabled {
+  opacity: 0.25;
 }

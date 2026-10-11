@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { generateDebugGraph, debugDefaults } from "../../src/debug-graphs";
 import { projectFlywheel, layoutFlywheel } from "../../src/flywheel-model";
 
-test("Flywheel study folds, expands, searches, pans, zooms, and refits without browser errors", async ({
+test("Flywheel study keeps a tiny ring panel and folds, expands, pans, zooms, and refits without browser errors", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -32,9 +32,9 @@ test("Flywheel study folds, expands, searches, pans, zooms, and refits without b
     layout = layoutFlywheel(projection.nodes, projection.edges);
   const id = [...projection.groups.keys()][0],
     p = layout.positions.get(id)!;
-  const scale = Math.min(1320, 820) / (2 * layout.extent);
+  const scale = Math.min(1.5, Math.min(1344, 904) / (2 * layout.extent));
   await canvas.click({
-    position: { x: 720 + p.x * scale, y: 515 + p.y * scale },
+    position: { x: 720 + p.x * scale, y: 500 + p.y * scale },
   });
   await expect(canvas).toHaveAttribute("data-nodes", "1000");
   await canvas.focus();
@@ -53,19 +53,44 @@ test("Flywheel study folds, expands, searches, pans, zooms, and refits without b
   await page.mouse.down();
   await page.mouse.move(900, 500, { steps: 5 });
   await page.mouse.up();
-  await page.getByRole("button", { name: "FIT GRAPH", exact: true }).click();
+  await page.keyboard.press("f");
   await expect(canvas).toHaveAttribute("data-visible-nodes", "3");
-  await page.getByRole("button", { name: "VIEW", exact: true }).click();
-  await page.getByLabel("Fold runs & leaf fans").uncheck();
-  await expect(canvas).toHaveAttribute("data-nodes", "1000");
-  await page.getByLabel("Find a node").fill(graph.nodes[0].title);
-  await page.locator(".fw-result").first().click();
-  await expect(page.getByLabel("Selected node")).toBeVisible();
-  await page.getByRole("button", { name: "Close node", exact: true }).click();
-  await page.getByLabel("Orbital guides").uncheck();
-  await page.getByLabel("Citation edges").uncheck();
-  await page.getByLabel("Fold runs & leaf fans").check();
-  await page.getByRole("button", { name: "VIEW", exact: true }).click();
+  await canvas.click({ position: { x: 720, y: 500 } });
+  await expect(page.locator("header, footer, nav")).toHaveCount(0);
+  await expect(page.locator(".fw-study").locator(":scope > *")).toHaveCount(2);
+  await page.keyboard.press("Escape");
+  const beforeStyle = await canvas.getAttribute("data-zoom");
+  for (const style of [
+    "bands",
+    "mist",
+    "ribbons",
+    "terraces",
+    "arcs",
+    "ticks",
+    "soft",
+    "dotted",
+    "dashed",
+    "none",
+  ]) {
+    await page
+      .getByRole("combobox", { name: "Ring style" })
+      .selectOption(style);
+    await expect(canvas).toHaveAttribute("data-ring-style", style);
+    await expect(canvas).toHaveAttribute("data-zoom", beforeStyle!);
+  }
+  await page.getByRole("combobox", { name: "Ring style" }).selectOption("mist");
+  await page.getByRole("slider", { name: "Ring ink" }).fill("2");
+  await page.getByRole("slider", { name: "Band width" }).fill("1.5");
+  await expect(canvas).toHaveAttribute("data-ring-ink", "2");
+  await expect(canvas).toHaveAttribute("data-band-width", "1.5");
+  await page.reload();
+  await expect(canvas).toHaveAttribute("data-ring-style", "mist");
+  await expect(canvas).toHaveAttribute("data-ring-ink", "2");
+  await expect(canvas).toHaveAttribute("data-band-width", "1.5");
+  await page.getByRole("button", { name: /RING LAB/ }).click();
+  await expect(page.getByRole("combobox", { name: "Ring style" })).toHaveCount(
+    0,
+  );
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(canvas).toHaveAttribute("data-visible-nodes", "3");
   expect(errors).toEqual([]);
