@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { hypergraphSnapshot } from "./hypergraph";
+import { governorGraph, toViewer } from "./governor";
 import Fastify from "fastify";
 import { z } from "zod";
 import { FlywheelAdapter, resolveRepo, ViewerError } from "./adapter";
@@ -106,6 +107,10 @@ export function createApp(adapter = new FlywheelAdapter()) {
       }
     if (!flywheel)
       return hypergraphSnapshot(root, { view, citations: citations !== "0" });
+    // a governor graph reads whole from its log (lib/snapshot.ts); any other Flywheel
+    // repository goes through the generic adapter
+    const governed = await governorGraph(root).catch(() => null);
+    if (governed) return toViewer(root, governed);
     return adapter.snapshot(root, tags === "1", head);
   });
   return app;

@@ -1,10 +1,10 @@
 {
-  "name": "flywheel-viz",
+  "name": "@theo-kirby/governor",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=24.15.0"
   },
   "scripts": {
     "dev": "concurrently -k -n api,web \"node --import tsx --watch server/index.ts\" \"vite --host 127.0.0.1\"",
@@ -21,7 +21,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "yaml": "^2.9.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
@@ -31,8 +32,11 @@
     "@vitejs/plugin-react": "^6.1.2",
     "concurrently": "^10.0.6",
     "prettier": "^3.9.9",
-    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
+  },
+  "description": "A record/state research graph on Flywheel: conventions, skills, CLI and the hub viewer",
+  "bin": {
+    "governor": "bin/governor.mjs"
   }
 }

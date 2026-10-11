@@ -1,26 +1,66 @@
 # governor
 
-Hypergraph's replacement, built on Flywheel: the conventions, skills and a small CLI for a
-record/state research graph kept in a Flywheel repository, plus the viewer. The viewer
-started as `flywheel-viz`; its history is merged in.
+A record/state research graph on [Flywheel](https://docs.flywheel.paradigma.inc): the
+conventions, the agent skills, a small CLI, and the hub viewer. It replaces
+[hypergraph-protocol](https://github.com/theo-kirby/hypergraph-protocol). The memory is
+**one Flywheel graph** in the project's local repository (`.flywheel/`, pushed and pulled
+through a hosted Flywheel repository); governor keeps no data of its own.
 
-## The hub layout (prototype)
+- **Records**: an append-only log of what happened, each with its causal parent and its
+  declared impact on state.
+- **State**: a small, single-writer distillation of what is true now, each claim citing
+  the records it rests on, with a status tag (`open`, `working`, `broken`, `blocked`,
+  `superseded`).
+- **The fold**: the only writer of state, which applies the unfolded tail of records.
 
-`?layout=hub` draws the graph as one wheel instead of two graphs:
+The model and its rules are in [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 
-- **the hub**, the state root, at the centre;
-- **state claims** on rings by depth, each subtree in an angular sector sized by its
-  claims and evidence (the spokes);
-- **records** on the rim, at the angle of the claims that cite them. They are packed
-  newest-first into the nearest free slot, so each claim's evidence stacks outward as a
-  tooth. Records nobody cites take the angle of their causal neighbours.
+## Install
 
-Status colours the claims: open amber, working green, broken red, blocked violet. Hover
-or click a node to see its citations and history.
-For Cadex's markdown graph: `?repo=/path/to/cadex&source=hypergraph&layout=hub`.
-`src/hub-model.ts` is the layout; `tests/hub-model.test.ts` pins it.
+Needs Node ≥ 24.15 and the `flywheel` CLI (`npm install -g @paradigma-inc/flywheel`).
 
----
+```sh
+git clone git@github.com:theo-kirby/governor.git && cd governor && npm ci
+npm link                       # puts `governor` on PATH
+```
+
+In a project:
+
+```sh
+flywheel repo:init                       # once, at the checkout root; gitignore .flywheel/ and .governor/
+governor init --title "My project"
+governor skills install                  # governor-orient, governor-record, governor-fold → .claude/skills
+```
+
+## Commands
+
+| | |
+|---|---|
+| `governor orient` | the frontier, the unfolded tail with its impacts, recent records |
+| `governor record --title T --body F --parent SLUG (--impact "SLUG: Δ" \| --new "name: Δ" \| --none "why")` | append one record |
+| `governor fold` / `governor fold --apply plan.json` | list the tail / apply a fold |
+| `governor check` | the rules G1–G7; exit 1 on a violation |
+| `governor render -o STATE.md` | the state as markdown |
+| `governor snapshot` | the whole graph as JSON |
+| `governor viz [--port N]` | the hub viewer for this repository |
+| `governor migrate-hypergraph --from DIR --repo NEW` | import a Hypergraph project ([docs/MIGRATING.md](docs/MIGRATING.md)) |
+
+Run inside a git worktree, every command resolves to the main checkout's repository.
+Writes serialize on a lock in `.governor/`, and a commit never sweeps up staged work
+governor did not stage. Reads replay the repository log (about 0.5 s for 1,100 nodes),
+so nothing is mirrored into files.
+
+## The hub view
+
+`governor viz` (or the viewer below with `?layout=hub`) draws the graph as one wheel:
+- **the root** at the centre;
+- **claims** on rings by depth, each subtree in a sector sized by its claims and
+  evidence;
+- **records** on the rim, packed newest-first into the free slot nearest the claims they
+  impact or that cite them, so each claim's evidence stacks outward as a tooth.
+
+Hover or click to see a node's citations and history. `src/hub-model.ts` is the layout.
+
 
 ## The viewer (from flywheel-viz)
 

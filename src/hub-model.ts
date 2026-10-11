@@ -13,7 +13,7 @@ import type { Point } from "./flywheel-model";
  * Placement reads only parent links and state→record citations. Records nobody cites
  * borrow the angle of their causal neighbours.
  */
-export type Kind = "state" | "record" | "plan" | "other";
+export type Kind = "root" | "state" | "record" | "plan" | "other";
 export type HubRing = { radius: number; kind: "state" | "record" };
 export type HubSector = {
   id: string;
@@ -49,7 +49,7 @@ export function kindOf(node: GraphNode): Kind {
       : tag.name.startsWith("kind:")
         ? tag.name.slice(5)
         : null;
-    if (name === "state" || name === "record" || name === "plan") return name;
+    if (name === "root" || name === "state" || name === "record" || name === "plan") return name;
   }
   return "other";
 }
@@ -119,24 +119,32 @@ export function layoutHub(
     if (e.relation === "parent" || e.kind === "containment") {
       (parents.get(e.target) ?? parents.set(e.target, []).get(e.target)!).push(e.source);
       (children.get(e.source) ?? children.set(e.source, []).get(e.source)!).push(e.target);
-    } else if (
-      e.relation === "citation" &&
-      kind.get(e.source) === "state" &&
-      kind.get(e.target) === "record"
-    )
-      (citedBy.get(e.target) ?? citedBy.set(e.target, []).get(e.target)!).push(e.source);
+    } else if (e.relation === "citation") {
+      // claim → record citations and record → claim impacts both tie a record to a claim
+      const [claim, rec] =
+        kind.get(e.source) === "state" && kind.get(e.target) === "record"
+          ? [e.source, e.target]
+          : kind.get(e.source) === "record" && kind.get(e.target) === "state"
+            ? [e.target, e.source]
+            : [null, null];
+      if (claim && rec) (citedBy.get(rec) ?? citedBy.set(rec, []).get(rec)!).push(claim);
+    }
   }
 
   // ---- the state tree (first parent wins; others stay drawn as edges)
   const state = nodes.filter((n) => kind.get(n.id) === "state");
   const record = nodes.filter((n) => kind.get(n.id) === "record");
+  // a governor graph has one root; a Hypergraph pair has a state root and a record root
+  const projectRoot = nodes.find((n) => kind.get(n.id) === "root") ?? null;
   const stateRoots = state.filter(
-    (n) => !(parents.get(n.id) ?? []).some((p) => kind.get(p) === "state"),
+    (n) => !(parents.get(n.id) ?? []).some((p) => kind.get(p) === "state" || kind.get(p) === "root"),
   );
-  const hub = stateRoots[0]?.id ?? null;
-  // the record root is the record graph's own anchor; the hub stands in for it
-  for (const n of record)
-    if (!(parents.get(n.id) ?? []).some((p) => kind.get(p) === "record")) hidden.add(n.id);
+  const hub = projectRoot?.id ?? stateRoots[0]?.id ?? null;
+  if (projectRoot) kind.set(projectRoot.id, "state"); // the tree walk below starts at the hub
+  // a Hypergraph record root is the record graph's own anchor; the hub stands in for it
+  if (!projectRoot)
+    for (const n of record)
+      if (!(parents.get(n.id) ?? []).some((p) => kind.get(p) === "record")) hidden.add(n.id);
 
   const depth = new Map<string, number>();
   const treeChildren = new Map<string, string[]>();
@@ -153,7 +161,8 @@ export function layoutHub(
       }
     }
     // further state roots (a second tree) hang off the hub
-    for (const r of stateRoots.slice(1)) {
+    for (const r of stateRoots.slice(projectRoot ? 0 : 1)) {
+      if (depth.has(r.id)) continue;
       depth.set(r.id, 1);
       (treeChildren.get(hub) ?? treeChildren.set(hub, []).get(hub)!).push(r.id);
     }
