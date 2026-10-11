@@ -219,3 +219,26 @@ It was started after the installed npm CLI 0.2.78's `flywheel ui` failed with
 - [Flywheel CLI reference](https://docs.flywheel.paradigma.inc/cli)
 
 Browser tests can target an existing production viewer with `VIEWER_URL=http://127.0.0.1:4311 npm run test:ui` when port 5173 is occupied.
+
+## Private research report embeds
+
+`npm run build:report` produces `dist-report/assets.json`, `report-schema.ts`,
+`types.ts` and `report-export.mjs`. The embed uses Governor's hub for fully typed
+root/state/record graphs and its replica renderer otherwise, retaining untyped
+nodes and plans. Pan/zoom, Fit and a text node list work without network access.
+
+Run the exporter with Node and one local repository root. It uses Governor's
+reader for governed graphs and its generic Flywheel adapter otherwise. It checks
+the committed head before and after reading, writes no graph/cache, and emits only
+bounded titles/topology, allowlisted role/status metadata and record dates.
+Bodies, arbitrary tags, paths and staged data never enter report snapshots.
+
+The private lab dashboard vendors the generated assets and schema. The publisher
+installs the exporter at `~/.local/share/research-graph/report-export.mjs`. Build
+and update both together. Snapshots stay out of Git and retain private access.
+This replaces the previous report integration sourced from flywheel-viz.
+
+Put escaped JSON in the inert `script#flywheel-snapshot[type=application/json]`,
+a `div#root`, the built CSS and trusted script in a sandboxed srcdoc frame with
+`allow-scripts` only. The host permits exactly `assets.scriptHash` in script-src;
+no arbitrary inline author code, same-origin frame privilege or remote requests.

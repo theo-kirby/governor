@@ -13,7 +13,8 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "check": "npm test && npm run build",
     "test:ui": "playwright test",
-    "format": "prettier --write src server shared tests *.ts *.json index.html README.md"
+    "format": "prettier --write src server shared tests *.ts *.json index.html README.md",
+    "build:report": "tsc --noEmit && node scripts/build-report.mjs"
   },
   "dependencies": {
     "@fastify/static": "^10.1.5",
