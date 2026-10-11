@@ -9,9 +9,10 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 try {
-  await app.listen({ host: "127.0.0.1", port: 4311 });
+  const port = Number(process.env.PORT || 4311);
+  await app.listen({ host: "127.0.0.1", port });
   console.log(
-    `Flywheel viewer ${process.env.NODE_ENV === "production" ? "→ http://127.0.0.1:4311" : "API → http://127.0.0.1:4311 (open Vite on :5173)"}`,
+    `Flywheel viewer ${process.env.NODE_ENV === "production" ? `→ http://127.0.0.1:${port}` : `API → http://127.0.0.1:${port} (open Vite on :5173)`}`,
   );
 } catch (error) {
   console.error(

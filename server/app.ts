@@ -21,12 +21,27 @@ const querySchema = z.object({
 });
 export function createApp(adapter = new FlywheelAdapter()) {
   const app = Fastify({ logger: false });
+  const port = process.env.PORT || "4311";
+  // GOVERNOR_ALLOWED_HOSTS: extra Host values a local proxy forwards (e.g. a tailnet
+  // name); each also becomes an allowed https:// origin.
+  const extraHosts = (process.env.GOVERNOR_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((h) => h.trim())
+    .filter(Boolean);
   const allowedHosts = new Set([
-    "127.0.0.1:4311",
-    "localhost:4311",
+    `127.0.0.1:${port}`,
+    `localhost:${port}`,
     "127.0.0.1:5173",
     "localhost:5173",
+    ...extraHosts,
   ]);
+  const allowedOrigins = [
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    ...extraHosts.map((h) => `https://${h}`),
+  ];
   app.addHook("onRequest", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
     reply.header("X-Content-Type-Options", "nosniff");
@@ -36,12 +51,7 @@ export function createApp(adapter = new FlywheelAdapter()) {
       return reply.code(403).send({ error: "Local access only." });
     if (
       request.headers.origin &&
-      ![
-        "http://127.0.0.1:4311",
-        "http://localhost:4311",
-        "http://127.0.0.1:5173",
-        "http://localhost:5173",
-      ].includes(request.headers.origin)
+      !allowedOrigins.includes(request.headers.origin)
     ) {
       return reply
         .code(403)
@@ -71,12 +81,22 @@ export function createApp(adapter = new FlywheelAdapter()) {
   });
   app.get("/api/config", async () => ({
     defaultRepo: process.env.FLYWHEEL_REPO || "",
+    // GOVERNOR_DEFAULT_PARAMS: query applied when the URL names no repo, e.g.
+    // "source=hypergraph&layout=hub"
+    defaultParams: process.env.GOVERNOR_DEFAULT_PARAMS || "",
   }));
   app.get("/api/graph", async (request) => {
     const { repo, tags, head, view, citations, source } = querySchema.parse(
       request.query,
     );
     const root = await resolveRepo(repo);
+    // FLYWHEEL_REPO_LOCK=1: serve only FLYWHEEL_REPO, whatever ?repo= says (for a
+    // viewer reachable beyond loopback).
+    if (
+      process.env.FLYWHEEL_REPO_LOCK === "1" &&
+      root !== (await resolveRepo(process.env.FLYWHEEL_REPO || ""))
+    )
+      throw new ViewerError("This viewer serves one repository only.", 403);
     let flywheel = source !== "hypergraph";
     if (flywheel && source !== "flywheel")
       try {

@@ -9,7 +9,8 @@ const Graph = lazy(() =>
 );
 
 async function read<T>(path: string, signal: AbortSignal): Promise<T> {
-  const response = await fetch(path, {
+  // relative to the build's base, so the viewer also works under a path prefix
+  const response = await fetch(import.meta.env.BASE_URL + path.replace(/^\//, ""), {
     headers: { "X-Flywheel-Viewer": "1" },
     signal,
   });
@@ -58,11 +59,16 @@ function Viewer() {
       const requested = query.get("repo");
       let repo = requested?.trim();
       if (!repo) {
-        const config = await read<{ defaultRepo: string }>(
+        const config = await read<{ defaultRepo: string; defaultParams?: string }>(
           "/api/config",
           controller.signal,
         );
         repo = config.defaultRepo;
+        if (config.defaultParams) {
+          for (const [k, v] of new URLSearchParams(config.defaultParams))
+            if (!query.has(k)) query.set(k, v);
+          history.replaceState(null, "", `${location.pathname}?${query}`);
+        }
       }
       if (!repo) {
         try {
