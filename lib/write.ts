@@ -225,7 +225,7 @@ export function validateFold(s: GraphSnapshot, plan: FoldPlan): string[] {
       const p = resolve(s, c.parent ?? "root");
       const newNames = new Set(plan.claims.filter((x) => x.new).map((x) => x.new));
       if (!p && !newNames.has(c.parent!)) problems.push(`new claim ${c.new}: parent \`${c.parent}\` is not in the graph`);
-      else if (p && p.kind !== "root" && p.kind !== (c.kind ?? "state")) problems.push(`new claim ${c.new}: parent \`${c.parent}\` is a ${p.kind} node`);
+      else if (p && p.kind !== "root" && p.kind !== (c.kind ?? plan.view ?? "state")) problems.push(`new claim ${c.new}: parent \`${c.parent}\` is a ${p.kind} node`);
     }
     if (!(STATUSES as readonly string[]).includes(c.status)) problems.push(`claim ${label}: status \`${c.status}\` is not one of ${STATUSES.join(", ")}`);
     if (!c.cites.length && c.status !== "open") problems.push(`claim ${label}: a ${c.status} claim cites at least one record (G4)`);
