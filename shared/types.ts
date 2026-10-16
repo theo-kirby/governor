@@ -34,3 +34,14 @@ export interface Snapshot {
   edges: GraphEdge[];
   loadedAt: string;
 }
+/** One node's full text, read on demand by the live viewer's detail panel. */
+export interface NodeDetail {
+  id: string;
+  slug?: string;
+  title: string;
+  summary?: string;
+  /** Markdown body. */
+  content: string;
+  /** Node ids of the body's `[rec|state|plan: slug]` citations, keyed "rec:slug". */
+  refs?: Record<string, string>;
+}

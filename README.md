@@ -111,7 +111,7 @@ Explicit `[rec: slug]`, `[state: slug]`, and `[plan: slug]` references become
 citation edges pointing from the citing node to the referenced node. Repeated
 citations to the same node are deduplicated. Arbitrary prose links are not parsed.
 Graph names and `Status:` lines become grayscale node tags. Markdown bodies
-are neither rendered nor returned to the browser.
+stay out of the graph snapshot; the detail panel reads one node at a time.
 
 Missing parents, duplicate identifiers, invalid YAML, and symlinked graph files
 produce an error. Unresolved citations are omitted with a console warning.
@@ -176,7 +176,9 @@ Keep dev dependencies installed: the local server uses the TypeScript runtime.
 
 React + TypeScript + Vite provide the app shell; Fastify serves the local API. The browser uses Canvas 2D without Cytoscape. See [replica research and fidelity limits](docs/flywheel-live-study.md).
 
-For Flywheel repositories, topology is committed state; tags load afterward for the same commit. The viewer does not edit graphs, render node bodies, poll automatically, or synchronize externally. Tag colors are stable hashes. Snapshots stay in memory; only the last successful repository path is stored locally.
+For Flywheel repositories, topology is committed state; tags load afterward for the same commit. The viewer does not edit graphs, poll automatically, or synchronize externally.
+
+Clicking a node opens a detail panel inset over half the screen, sliding in from the side the node is on. It shows the node's tags, markdown body and links (parents, children, cites, cited by); `[rec|state|plan: slug]` citations and links are clickable and select that node. The graph rearranges into a fan rooted at that node: it sits beside the panel and every other node lies on a ring by link distance, opening into the other half, with its neighbours highlighted. Nothing is drawn under the panel. Following a link re-roots the fan; F fits the whole fan. Escape, the close button or a click on empty canvas closes the panel and returns the orbital layout. Bodies come from `GET /api/node?repo=…&id=…`, one at a time, for governor graphs and Hypergraph working trees; other Flywheel repositories show links only. Report exports never include bodies. Tag colors are stable hashes. Snapshots stay in memory; only the last successful repository path is stored locally.
 
 ## Development and checks
 

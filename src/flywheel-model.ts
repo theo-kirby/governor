@@ -323,3 +323,111 @@ export function layoutFlywheel(nodes: GraphNode[], edges: GraphEdge[]) {
   );
   return { positions, components, orbits, extent };
 }
+
+/**
+ * A fan rooted at one node: the focus sits at the origin and every other node lies
+ * on a ring by link distance (parents and citations alike), within `spread` radians
+ * around `direction`. Nodes the focus cannot reach take the outermost ring.
+ */
+export function layoutFocus(
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  focus: string,
+  direction = 0,
+  spread = Math.PI,
+) {
+  const ids = nodes.map((n) => n.id);
+  const neighbors = new Map(ids.map((id) => [id, [] as string[]]));
+  for (const e of edges) {
+    if (e.source === e.target) continue;
+    neighbors.get(e.source)?.push(e.target);
+    neighbors.get(e.target)?.push(e.source);
+  }
+  const depth = new Map<string, number>();
+  const children = new Map(ids.map((id) => [id, [] as string[]]));
+  const seeds: string[] = [];
+  const reach = (seed: string, start: number) => {
+    depth.set(seed, start);
+    const queue = [seed];
+    for (let i = 0; i < queue.length; i++)
+      for (const next of neighbors.get(queue[i]) ?? [])
+        if (!depth.has(next)) {
+          depth.set(next, depth.get(queue[i])! + 1);
+          children.get(queue[i])!.push(next);
+          queue.push(next);
+        }
+  };
+  if (!neighbors.has(focus))
+    return { positions: new Map<string, Point>(), rings: [], counts: [] };
+  reach(focus, 0);
+  const outer = Math.max(0, ...depth.values()) + 1;
+  for (const id of ids)
+    if (!depth.has(id)) {
+      seeds.push(id);
+      reach(id, outer);
+    }
+  // Subtree weights give each branch an angular share in proportion to its size.
+  const weight = new Map<string, number>();
+  for (const id of [...ids].sort((a, b) => depth.get(b)! - depth.get(a)!))
+    weight.set(
+      id,
+      Math.max(1, children.get(id)!.reduce((s, c) => s + weight.get(c)!, 0)),
+    );
+  const lo = direction - spread / 2,
+    hi = direction + spread / 2;
+  const angle = new Map<string, number>([[focus, direction]]);
+  const sectors = [{ id: focus, start: lo, end: hi, kids: [...children.get(focus)!, ...seeds] }];
+  for (let i = 0; i < sectors.length; i++) {
+    const { start, end, kids } = sectors[i];
+    const total = kids.reduce((s, c) => s + weight.get(c)!, 0);
+    let a = start;
+    for (const child of kids) {
+      const b = a + ((end - start) * weight.get(child)!) / total;
+      angle.set(child, (a + b) / 2);
+      sectors.push({ id: child, start: a, end: b, kids: children.get(child)! });
+      a = b;
+    }
+  }
+  const layers = new Map<number, string[]>();
+  for (const id of ids)
+    if (id !== focus) {
+      const layer = layers.get(depth.get(id)!) ?? [];
+      layer.push(id);
+      layers.set(depth.get(id)!, layer);
+    }
+  const positions = new Map<string, Point>([[focus, { x: 0, y: 0 }]]);
+  const rings: number[] = [];
+  const counts: number[] = [];
+  let radius = 0;
+  for (const [, layer] of [...layers].sort((a, b) => a[0] - b[0])) {
+    counts.push(layer.length);
+    radius = Math.max(radius + 140, (layer.length * 100) / spread);
+    layer.sort((a, b) => angle.get(a)! - angle.get(b)!);
+    // the same minimum-gap projection as the orbital layout, bounded by the fan
+    const gap = Math.min(
+      2 * Math.asin(Math.min(1, 48 / radius)),
+      spread / Math.max(1, layer.length - 1),
+    );
+    const blocks: { sum: number; count: number }[] = [];
+    layer.forEach((id, i) => {
+      blocks.push({ sum: angle.get(id)! - i * gap, count: 1 });
+      while (blocks.length > 1) {
+        const a = blocks.at(-2)!,
+          b = blocks.at(-1)!;
+        if (a.sum / a.count <= b.sum / b.count) break;
+        blocks.splice(-2, 2, { sum: a.sum + b.sum, count: a.count + b.count });
+      }
+    });
+    const top = hi - (layer.length - 1) * gap;
+    let k = 0;
+    for (const block of blocks) {
+      const base = Math.max(lo, Math.min(top, block.sum / block.count));
+      for (let j = 0; j < block.count; j++, k++) {
+        const t = base + k * gap;
+        positions.set(layer[k], { x: Math.cos(t) * radius, y: Math.sin(t) * radius });
+      }
+    }
+    rings.push(radius);
+  }
+  return { positions, rings, counts };
+}

@@ -123,3 +123,34 @@ test("Hypergraph rejects missing parents, duplicate IDs, malformed YAML, and sym
     await rm(repo, { recursive: true, force: true });
   }
 });
+
+test("the node endpoint returns one Hypergraph body with its resolved citations", async () => {
+  const { repo, put } = await fixture();
+  const app = createApp();
+  try {
+    await put("record", "root");
+    await put("state", "root", [], "\n## Current\n[rec: root] [rec: missing]\nPrivate body");
+    const read = (id: string) =>
+      app.inject({
+        url: `/api/node?repo=${encodeURIComponent(repo)}&id=${id}`,
+        headers: { host: "127.0.0.1:4311", "x-flywheel-viewer": "1" },
+      });
+    const response = await read("state-root");
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      id: "state-root",
+      slug: "root",
+      title: "Quoted: root",
+      content: "## Current\n[rec: root] [rec: missing]\nPrivate body",
+      refs: { "rec:root": "record-root" },
+    });
+    assert.equal((await read("nope")).statusCode, 404);
+    assert.equal(
+      (await app.inject({ url: `/api/node?repo=${encodeURIComponent(repo)}`, headers: { host: "127.0.0.1:4311", "x-flywheel-viewer": "1" } })).statusCode,
+      400,
+    );
+  } finally {
+    await app.close();
+    await rm(repo, { recursive: true, force: true });
+  }
+});

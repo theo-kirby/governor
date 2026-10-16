@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { join } from "node:path";
-import { hypergraphSnapshot } from "./hypergraph";
-import { governorGraph, toViewer } from "./governor";
+import { hypergraphNode, hypergraphSnapshot } from "./hypergraph";
+import { governorGraph, governorNode, toViewer } from "./governor";
 import Fastify from "fastify";
 import { z } from "zod";
 import { FlywheelAdapter, resolveRepo, ViewerError } from "./adapter";
@@ -19,6 +19,11 @@ const querySchema = z.object({
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)
     .optional(),
+});
+const nodeQuerySchema = z.object({
+  repo: querySchema.shape.repo,
+  id: z.string().trim().min(1).max(256),
+  source: querySchema.shape.source,
 });
 export function createApp(adapter = new FlywheelAdapter()) {
   const app = Fastify({ logger: false });
@@ -112,6 +117,29 @@ export function createApp(adapter = new FlywheelAdapter()) {
     const governed = await governorGraph(root).catch(() => null);
     if (governed) return toViewer(root, governed);
     return adapter.snapshot(root, tags === "1", head);
+  });
+  // One node's body for the live viewer's detail panel. Report exports never call it.
+  app.get("/api/node", async (request) => {
+    const { repo, id, source } = nodeQuerySchema.parse(request.query);
+    const root = await resolveRepo(repo);
+    if (
+      process.env.FLYWHEEL_REPO_LOCK === "1" &&
+      root !== (await resolveRepo(process.env.FLYWHEEL_REPO || ""))
+    )
+      throw new ViewerError("This viewer serves one repository only.", 403);
+    let flywheel = source !== "hypergraph";
+    if (flywheel && source !== "flywheel")
+      try {
+        await access(join(root, ".flywheel/db.sqlite"));
+      } catch {
+        flywheel = false;
+      }
+    const governed = flywheel ? await governorGraph(root).catch(() => null) : null;
+    if (flywheel && !governed)
+      throw new ViewerError("Node details are available for governor and Hypergraph graphs only.", 404);
+    const node = governed ? governorNode(governed, id) : await hypergraphNode(root, id);
+    if (!node) throw new ViewerError("No live node with this id.", 404);
+    return node;
   });
   return app;
 }

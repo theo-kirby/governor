@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { layoutFlywheel, projectFlywheel } from "../src/flywheel-model";
+import { layoutFlywheel, layoutFocus, projectFlywheel } from "../src/flywheel-model";
 import {
   debugDefaults,
   generateDebugGraph,
@@ -117,4 +117,36 @@ test("citation cross-links do not fuse separate orbital components or change the
   assert.deepEqual(layoutFlywheel(nodes, [...edges, citation]), base);
   const p = projectFlywheel(nodes, [...edges, citation]);
   assert(p.edges.some((e) => e.id === "citation"));
+});
+
+test("the focus fan roots the layout at one node and keeps every node on its side", () => {
+  const nodes = Array.from({ length: 40 }, (_, i) => ({
+    id: `n${i}`,
+    title: "",
+    parentId: null,
+    childCount: 0,
+    edgeCount: 0,
+    lifecycle: "live",
+  }));
+  // a tree over the first 35 nodes, plus five unreachable ones
+  const edges = nodes.slice(1, 35).map((n, i) => ({
+    id: `e${i}`,
+    source: `n${Math.floor(i / 3)}`,
+    target: n.id,
+    kind: "semantic" as const,
+  }));
+  for (const direction of [0, Math.PI, -Math.PI / 2]) {
+    const { positions, rings, counts } = layoutFocus(nodes, edges, "n4", direction);
+    assert.deepEqual(positions.get("n4"), { x: 0, y: 0 });
+    assert.equal(positions.size, nodes.length);
+    assert.equal(counts.reduce((a, b) => a + b, 0), nodes.length - 1);
+    // the focus's direct links take the first ring; the unreachable nodes the last
+    for (const id of ["n1", "n13", "n14", "n15"])
+      assert.ok(Math.abs(Math.hypot(positions.get(id)!.x, positions.get(id)!.y) - rings[0]) < 1e-6);
+    assert.equal(counts.at(-1), 5);
+    for (const p of positions.values()) {
+      assert.ok(Number.isFinite(p.x) && Number.isFinite(p.y));
+      assert.ok(p.x * Math.cos(direction) + p.y * Math.sin(direction) > -1e-6);
+    }
+  }
 });

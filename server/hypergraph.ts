@@ -3,7 +3,7 @@ import { join, relative, resolve, isAbsolute } from "node:path";
 import { parseDocument } from "yaml";
 import { z } from "zod";
 import { ViewerError } from "./adapter";
-import type { Snapshot, GraphNode, GraphEdge } from "../shared/types";
+import type { Snapshot, GraphNode, GraphEdge, NodeDetail } from "../shared/types";
 
 const metadata = z.object({
   node_id: z.string().min(1),
@@ -31,6 +31,37 @@ export async function hypergraphSnapshot(
   repo: string,
   options: { view?: string; citations?: boolean } = {},
 ): Promise<Snapshot> {
+  return (await readHypergraph(repo, options)).snapshot;
+}
+// One node's body for the detail panel; it rereads the working tree so the text
+// matches the files as they are now.
+export async function hypergraphNode(
+  repo: string,
+  id: string,
+): Promise<NodeDetail | null> {
+  const { rows } = await readHypergraph(repo);
+  const row = rows.find((r) => r.meta.node_id === id);
+  if (!row) return null;
+  const refs: Record<string, string> = {};
+  for (const [, prefix, slug] of row.body.matchAll(
+    /\[(rec|state|plan):\s*([a-zA-Z0-9_-]+)\s*\]/g,
+  )) {
+    const group = prefix === "rec" ? "record" : prefix;
+    const target = rows.find((r) => r.group === group && r.meta.slug === slug);
+    if (target) refs[`${prefix}:${slug}`] = target.meta.node_id;
+  }
+  return {
+    id,
+    slug: row.meta.slug,
+    title: row.meta.title,
+    content: row.body.replace(/^\r?\n/, ""),
+    refs,
+  };
+}
+async function readHypergraph(
+  repo: string,
+  options: { view?: string; citations?: boolean } = {},
+) {
   repo = await realpath(repo);
   const configPath = await within(repo, join(repo, ".hypergraph/config.yml"));
   const configText = await readFile(configPath, "utf8");
@@ -216,7 +247,7 @@ export async function hypergraphSnapshot(
   );
   for (const node of visibleNodes) node.edgeCount = 0;
   for (const edge of visibleEdges) byId.get(edge.source)!.edgeCount++;
-  return {
+  const snapshot: Snapshot = {
     repo,
     repositoryId: `hypergraph:${repo}`,
     source: "hypergraph",
@@ -229,4 +260,5 @@ export async function hypergraphSnapshot(
       ? [`${unresolvedCitations} unresolved citations omitted.`]
       : [],
   };
+  return { snapshot, rows };
 }
