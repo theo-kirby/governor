@@ -24,7 +24,7 @@ export interface GraphEdge {
   content?: string | null;
 }
 export interface Snapshot {
-  source?: "flywheel" | "hypergraph";
+  source?: "flywheel";
   warnings?: string[];
   repo: string;
   repositoryId: string;

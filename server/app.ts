@@ -1,6 +1,3 @@
-import { access } from "node:fs/promises";
-import { join } from "node:path";
-import { hypergraphSnapshot } from "./hypergraph";
 import { governorGraph, toViewer } from "./governor";
 import Fastify from "fastify";
 import { z } from "zod";
@@ -9,12 +6,6 @@ import { FlywheelAdapter, resolveRepo, ViewerError } from "./adapter";
 const querySchema = z.object({
   repo: z.string().trim().min(1).max(4096),
   tags: z.literal("1").optional(),
-  view: z
-    .string()
-    .regex(/^[a-zA-Z0-9_-]+$/)
-    .optional(),
-  citations: z.enum(["0", "1"]).optional(),
-  source: z.enum(["flywheel", "hypergraph"]).optional(),
   head: z
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)
@@ -83,11 +74,11 @@ export function createApp(adapter = new FlywheelAdapter()) {
   app.get("/api/config", async () => ({
     defaultRepo: process.env.FLYWHEEL_REPO || "",
     // GOVERNOR_DEFAULT_PARAMS: query applied when the URL names no repo, e.g.
-    // "source=hypergraph&layout=hub"
+    // "layout=hub"
     defaultParams: process.env.GOVERNOR_DEFAULT_PARAMS || "",
   }));
   app.get("/api/graph", async (request) => {
-    const { repo, tags, head, view, citations, source } = querySchema.parse(
+    const { repo, tags, head } = querySchema.parse(
       request.query,
     );
     const root = await resolveRepo(repo);
@@ -98,15 +89,6 @@ export function createApp(adapter = new FlywheelAdapter()) {
       root !== (await resolveRepo(process.env.FLYWHEEL_REPO || ""))
     )
       throw new ViewerError("This viewer serves one repository only.", 403);
-    let flywheel = source !== "hypergraph";
-    if (flywheel && source !== "flywheel")
-      try {
-        await access(join(root, ".flywheel/db.sqlite"));
-      } catch {
-        flywheel = false;
-      }
-    if (!flywheel)
-      return hypergraphSnapshot(root, { view, citations: citations !== "0" });
     // a governor graph reads whole from its log (lib/snapshot.ts); any other Flywheel
     // repository goes through the generic adapter
     const governed = await governorGraph(root).catch(() => null);

@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { check } from "../lib/check";
-import { citations, claimBody, parseImpacts, recordBody } from "../lib/migrate";
-import { claimContent, declaresNone, impactContent, mergeCitations, newClaims, parseEdge, recordContent, recordedAt } from "../lib/model";
+import { citations, claimContent, declaresNone, impactContent, mergeCitations, newClaims, parseEdge, parseImpacts, recordContent, recordedAt } from "../lib/model";
 import { deriveEdges, type GNode, type GraphSnapshot } from "../lib/snapshot";
 
 const node = (id: string, kind: GNode["kind"], extra: Partial<GNode> = {}): GNode => ({
@@ -63,20 +62,12 @@ test("check wants exactly one status and evidence for a working claim", () => {
   assert.equal(found.length, 3); // two statuses; and two claims citing nothing
 });
 
-test("the hypergraph parsers read impacts, statuses and citations", () => {
+test("the content parsers read impacts and citations", () => {
   const rec = "## What\nx\n\n## State Impact\n\n- calm-oak-0001 — a delta\n- NEW engine-speed — measured\n- plan/brave-fox-0002 — bet\n";
   assert.deepEqual(parseImpacts(rec).map((i) => [i.view, i.target, i.isNew]), [["state", "calm-oak-0001", false], ["state", "engine-speed", true], ["plan", "brave-fox-0002", false]]);
-  assert.deepEqual(claimBody("Status: working\n\n## Current\n\nx\n"), ["working", "## Current\n\nx\n"]);
   const claim = "## Current\n\n- y [rec: calm-oak-0001]\n\n## Provenance\n\n- brave-fox-0002 — why it matters\n- calm-oak-0001 — dup\n";
   assert.deepEqual(citations(claim), [{ slug: "brave-fox-0002", why: "why it matters" }, { slug: "calm-oak-0001", why: "dup" }]);
-  const body = recordBody({ node_id: "n", slug_name: "s", title: "t", summary: "", parent_ids: [], created_at: "2026-01-02T03:04:05+00:00", content: rec });
-  assert.equal(recordedAt(body), "2026-01-02T03:04:05+00:00");
-  assert.ok(body.indexOf("## Recorded") < body.indexOf("## State Impact"));
-  const old = recordBody({ node_id: "n", slug_name: "s", title: "t", summary: "", parent_ids: [], created_at: "t", content: "## What\n- target: x\n\n## State Impact\n\n- target: calm-oak-0001 — d\n- target: NEW thing — e\n\n## Notes\n- target: keep\n" });
-  assert.match(old, /^- calm-oak-0001 — d$/m);
-  assert.deepEqual(newClaims(old), [{ name: "thing", delta: "e" }]);
-  assert.match(old, /^## What\n- target: x$/m);
-  assert.match(old, /^- target: keep$/m);
+  // older imported records prefix the target with `target:`
   assert.deepEqual(parseImpacts("## State Impact\n\n- target: calm-oak-0001 — d\n").map((i) => i.target), ["calm-oak-0001"]);
 });
 

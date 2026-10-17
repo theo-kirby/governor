@@ -18,7 +18,6 @@ test("Default dotted-ring viewer folds, expands, pans, zooms, and refits without
       json: {
         ...graph,
         repo: "/fixture",
-        source: "hypergraph",
         head: null,
         warnings: [],
       },

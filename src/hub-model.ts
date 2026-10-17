@@ -134,14 +134,14 @@ export function layoutHub(
   // ---- the state tree (first parent wins; others stay drawn as edges)
   const state = nodes.filter((n) => kind.get(n.id) === "state");
   const record = nodes.filter((n) => kind.get(n.id) === "record");
-  // a governor graph has one root; a Hypergraph pair has a state root and a record root
+  // a governor graph has one root; a graph without one has a state root and a record root
   const projectRoot = nodes.find((n) => kind.get(n.id) === "root") ?? null;
   const stateRoots = state.filter(
     (n) => !(parents.get(n.id) ?? []).some((p) => kind.get(p) === "state" || kind.get(p) === "root"),
   );
   const hub = projectRoot?.id ?? stateRoots[0]?.id ?? null;
   if (projectRoot) kind.set(projectRoot.id, "state"); // the tree walk below starts at the hub
-  // a Hypergraph record root is the record graph's own anchor; the hub stands in for it
+  // without a project root, the record root is the record graph's own anchor; the hub stands in for it
   if (!projectRoot)
     for (const n of record)
       if (!(parents.get(n.id) ?? []).some((p) => kind.get(p) === "record")) hidden.add(n.id);

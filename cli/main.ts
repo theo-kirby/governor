@@ -23,7 +23,6 @@ const HELP = `governor — a record/state research graph on a Flywheel repositor
   governor head                            the repository head (cheap; for cache keys)
   governor orient                          frontier + tail impacts + recent records
   governor snapshot                        the whole graph as JSON
-  governor migrate-hypergraph --from DIR   import a Hypergraph project's exports (see docs)
   governor viz [--port N]                  serve the hub viewer for this repository
   governor skills install [--user|--target DIR]   copy the skills into .claude/skills
 
@@ -74,7 +73,6 @@ async function main(argv: string[]): Promise<number> {
       apply: { type: "string" },
       threshold: { type: "string" },
       output: { type: "string", short: "o" },
-      from: { type: "string" },
       port: { type: "string" },
       json: { type: "boolean" },
       view: { type: "string" },
@@ -162,13 +160,6 @@ async function main(argv: string[]): Promise<number> {
       console.log(JSON.stringify(await snapshot(fw)));
       return 0;
     }
-    case "migrate-hypergraph": {
-      const { migrateHypergraph } = await import("../lib/migrate");
-      const fw = await repoFrom(values.repo);
-      if (!values.from) throw new GovernorError("--from DIR (a Hypergraph project root) is required");
-      await migrateHypergraph(fw, resolvePath(values.from));
-      return 0;
-    }
     case "viz": {
       const fw = await repoFrom(values.repo);
       process.env.FLYWHEEL_REPO = fw.repo;
@@ -200,7 +191,7 @@ async function main(argv: string[]): Promise<number> {
   throw new GovernorError(`unknown command \`${command}\` — governor help`);
 }
 
-/** Records imported from a Hypergraph project predate the impact edges G3 asks for. */
+/** Records written by an import (`governor migrate` commits) predate the impact lines G3 asks for. */
 function legacyBefore(s: Awaited<ReturnType<typeof snapshot>>): number | undefined {
   let marker = -1;
   s.commits.forEach((c, i) => {

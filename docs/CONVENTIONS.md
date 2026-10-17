@@ -4,7 +4,7 @@ A project's research memory is **one Flywheel graph** in the project's local rep
 (`.flywheel/` at the checkout root, pushed and pulled through a hosted Flywheel repository).
 Governor adds a discipline on top of it; it never keeps data of its own.
 
-The discipline is Hypergraph's, kept where it earned its place:
+The discipline:
 
 - **Records** are an append-only log of what happened: experiments, fixes, decisions,
   dead ends. A dead end recorded is worth as much as a success.
@@ -13,9 +13,9 @@ The discipline is Hypergraph's, kept where it earned its place:
 - Every state claim **cites** the records it rests on, and every record **declares** what
   it changes in state. A fresh agent reads state first and the record log only to dig.
 
-What changes from Hypergraph: one graph instead of two, Flywheel tags instead of
-`Status:` lines, and no files. Impacts and citations stay slug lines in node content, as
-in Hypergraph; governor derives the edges from them (see "Why relations are content").
+One graph holds records, state and plan. Statuses are Flywheel tags, and there are no
+files. Impacts and citations are slug lines in node content; governor derives the edges
+from them (see "Why relations are content").
 
 ## The graph
 
@@ -90,6 +90,10 @@ Warnings that do not fail the check:
 - a claim is `working` but rests only on records older than the newest record that touches it;
 - a record parent was chosen by recency instead of causality (detected when the parent is
   simply the previous record of the same session; advisory only).
+
+Imported records are the records written by commits whose message starts `governor migrate`
+(a graph imported from an older memory). They predate the impact lines, so G3 skips them,
+the tail warning does not count them, and a G5 dangling reference in them is a warning.
 
 ## Roles
 

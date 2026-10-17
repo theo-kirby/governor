@@ -409,7 +409,7 @@ test("renders live tag annotations from background enrichment", async ({
   );
 });
 
-test("legacy Hypergraph snapshots render without a Flywheel tag request", async ({
+test("snapshots without a head render without a Flywheel tag request", async ({
   page,
 }) => {
   let reads = 0;
@@ -417,10 +417,10 @@ test("legacy Hypergraph snapshots render without a Flywheel tag request", async 
     reads++;
     expect(new URL(route.request().url()).searchParams.has("tags")).toBe(false);
     return route.fulfill({
-      json: { ...snapshot, source: "hypergraph", head: null },
+      json: { ...snapshot, head: null },
     });
   });
-  await page.goto("/?repo=../cadex");
+  await page.goto("/?repo=/fixture");
   await expect(page.locator(".fw-canvas")).toBeVisible();
   await page.locator(".fw-canvas").focus();
   await page.keyboard.press("f");

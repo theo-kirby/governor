@@ -141,7 +141,7 @@ export function parseImpacts(content: string): ImpactLine[] {
   for (const raw of (sectionOf(content, "State Impact") ?? "").split("\n")) {
     const m = raw.trim().match(/^-\s*(?<target>.+?)\s+—\s+(?<delta>.+)$/);
     if (!m) continue;
-    // Hypergraph wrote `- target: <slug> — delta`; governor writes `- <slug> — delta`
+    // older imported records write `- target: <slug> — delta`; governor writes `- <slug> — delta`
     let target = m.groups!.target.trim().replace(/^target:\s*/, "").replace(/^`|`$/g, "");
     let view = "state";
     if (target.includes("/")) [view, target] = [target.slice(0, target.indexOf("/")), target.slice(target.indexOf("/") + 1).trim()];

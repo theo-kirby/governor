@@ -87,19 +87,14 @@ export async function resolveRepo(input: string): Promise<string> {
         ? join(homedir(), input.slice(2))
         : input;
   let repo = resolve(expanded);
-  if ([".flywheel", ".hypergraph"].includes(basename(repo)))
-    repo = dirname(repo);
+  if (basename(repo) === ".flywheel") repo = dirname(repo);
   try {
     repo = await realpath(repo);
-    try {
-      await access(join(repo, ".flywheel", "db.sqlite"));
-    } catch {
-      await access(join(repo, ".hypergraph", "config.yml"));
-    }
+    await access(join(repo, ".flywheel", "db.sqlite"));
     return repo;
   } catch {
     throw new ViewerError(
-      "No graph repository found here. Choose a folder containing .flywheel/db.sqlite or .hypergraph/config.yml.",
+      "No graph repository found here. Choose a folder containing .flywheel/db.sqlite.",
       400,
     );
   }
