@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import type { Snapshot } from "../shared/types";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import type { NodeDetail, Snapshot } from "../shared/types";
 import { demoGraph } from "./demo";
 
 const Graph = lazy(() =>
@@ -43,6 +43,18 @@ function Viewer() {
     "nodes" | "edges"
   > | null>(null);
   const [status, setStatus] = useState("Loading graph");
+  const [repo, setRepo] = useState<string | null>(null);
+  // The detail panel's body reader; the demo has no bodies, only its topology.
+  const loadNode = useCallback(
+    async (id: string, signal: AbortSignal) => {
+      if (!repo) return null;
+      const query = new URLSearchParams({ repo, id });
+      const source = new URLSearchParams(location.search).get("source");
+      if (source) query.set("source", source);
+      return read<NodeDetail>(`/api/node?${query}`, signal);
+    },
+    [repo],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -88,6 +100,7 @@ function Viewer() {
       );
       if (controller.signal.aborted) return;
       setSnapshot(data);
+      setRepo(data.repo);
       setStatus(
         data.nodes.length ? "Committed graph" : "No committed nodes",
       );
@@ -138,7 +151,12 @@ function Viewer() {
           {new URLSearchParams(location.search).get("layout") === "hub" ? (
             <Hub nodes={snapshot.nodes} edges={snapshot.edges} label={status} />
           ) : (
-            <Graph nodes={snapshot.nodes} edges={snapshot.edges} label={status} />
+            <Graph
+              nodes={snapshot.nodes}
+              edges={snapshot.edges}
+              label={status}
+              details={loadNode}
+            />
           )}
         </Suspense>
       )}

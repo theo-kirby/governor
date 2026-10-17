@@ -1,0 +1,11 @@
+import { build } from "vite";
+import react from "@vitejs/plugin-react";
+import { readFile, writeFile, copyFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+await build({configFile:false,plugins:[react()],define:{"process.env.NODE_ENV":JSON.stringify("production")},build:{outDir:"dist-report",emptyOutDir:true,lib:{entry:"src/report.tsx",name:"GovernorReport",formats:["iife"],fileName:()=>"embed.js",cssFileName:"embed"}}});
+await build({configFile:false,ssr:{noExternal:true},build:{ssr:"server/report-export.ts",outDir:"dist-report",emptyOutDir:false,rollupOptions:{output:{entryFileNames:"report-export.mjs"}}}});
+const script=await readFile("dist-report/embed.js","utf8"), css=await readFile("dist-report/embed.css","utf8");
+if (/<\/script/i.test(script) || /<\/style/i.test(css)) throw new Error("Unsafe inline asset delimiter");
+await writeFile("dist-report/assets.json",JSON.stringify({script,css,scriptHash:"sha256-"+createHash("sha256").update(script).digest("base64")}));
+await copyFile("shared/report.ts","dist-report/report-schema.ts");
+await copyFile("shared/types.ts","dist-report/types.ts");

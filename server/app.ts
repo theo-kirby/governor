@@ -1,4 +1,4 @@
-import { governorGraph, toViewer } from "./governor";
+import { governorGraph, governorNode, toViewer } from "./governor";
 import Fastify from "fastify";
 import { z } from "zod";
 import { FlywheelAdapter, resolveRepo, ViewerError } from "./adapter";
@@ -10,6 +10,10 @@ const querySchema = z.object({
     .string()
     .regex(/^sha256:[a-f0-9]{64}$/)
     .optional(),
+});
+const nodeQuerySchema = z.object({
+  repo: querySchema.shape.repo,
+  id: z.string().trim().min(1).max(256),
 });
 export function createApp(adapter = new FlywheelAdapter()) {
   const app = Fastify({ logger: false });
@@ -78,9 +82,7 @@ export function createApp(adapter = new FlywheelAdapter()) {
     defaultParams: process.env.GOVERNOR_DEFAULT_PARAMS || "",
   }));
   app.get("/api/graph", async (request) => {
-    const { repo, tags, head } = querySchema.parse(
-      request.query,
-    );
+    const { repo, tags, head } = querySchema.parse(request.query);
     const root = await resolveRepo(repo);
     // FLYWHEEL_REPO_LOCK=1: serve only FLYWHEEL_REPO, whatever ?repo= says (for a
     // viewer reachable beyond loopback).
@@ -94,6 +96,22 @@ export function createApp(adapter = new FlywheelAdapter()) {
     const governed = await governorGraph(root).catch(() => null);
     if (governed) return toViewer(root, governed);
     return adapter.snapshot(root, tags === "1", head);
+  });
+  // One node's body for the live viewer's detail panel. Report exports never call it.
+  app.get("/api/node", async (request) => {
+    const { repo, id } = nodeQuerySchema.parse(request.query);
+    const root = await resolveRepo(repo);
+    if (
+      process.env.FLYWHEEL_REPO_LOCK === "1" &&
+      root !== (await resolveRepo(process.env.FLYWHEEL_REPO || ""))
+    )
+      throw new ViewerError("This viewer serves one repository only.", 403);
+    const governed = await governorGraph(root).catch(() => null);
+    if (!governed)
+      throw new ViewerError("Node details are available for governor graphs only.", 404);
+    const node = governorNode(governed, id);
+    if (!node) throw new ViewerError("No live node with this id.", 404);
+    return node;
   });
   return app;
 }

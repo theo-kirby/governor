@@ -21,3 +21,254 @@
     left: 308px;
   }
 }
+
+/* Node detail panel: an inset card over half the screen, sliding in from the
+   side the clicked node was on. */
+.node-panel {
+  position: absolute;
+  z-index: 2;
+  top: 16px;
+  bottom: 16px;
+  width: calc(50% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: #1a1a1aee;
+  border: 1px solid #333;
+  border-radius: 10px;
+  box-shadow: 0 18px 60px #000a;
+  backdrop-filter: blur(6px);
+  color: #ddd;
+  font: 14px/1.6 Inter, system-ui, sans-serif;
+  animation: node-panel-in-right 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.node-panel-left {
+  left: 16px;
+  animation-name: node-panel-in-left;
+}
+.node-panel-right {
+  right: 16px;
+}
+.node-panel.closing {
+  animation: node-panel-out-right 0.22s ease-in forwards;
+}
+.node-panel-left.closing {
+  animation-name: node-panel-out-left;
+}
+@keyframes node-panel-in-left {
+  from { transform: translateX(calc(-100% - 24px)); }
+}
+@keyframes node-panel-in-right {
+  from { transform: translateX(calc(100% + 24px)); }
+}
+@keyframes node-panel-out-left {
+  to { transform: translateX(calc(-100% - 24px)); }
+}
+@keyframes node-panel-out-right {
+  to { transform: translateX(calc(100% + 24px)); }
+}
+@media (max-width: 799px) {
+  /* narrow screens: a sheet over the lower 60%, the graph keeps the top */
+  .node-panel,
+  .node-panel-left,
+  .node-panel-right {
+    left: 8px;
+    right: 8px;
+    top: auto;
+    bottom: 8px;
+    width: auto;
+    height: calc(60% - 8px);
+    animation-name: node-panel-in-up;
+  }
+  .node-panel.closing {
+    animation-name: node-panel-out-down;
+  }
+}
+@keyframes node-panel-in-up {
+  from { transform: translateY(calc(100% + 16px)); }
+}
+@keyframes node-panel-out-down {
+  to { transform: translateY(calc(100% + 16px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .node-panel,
+  .node-panel.closing {
+    animation-duration: 1ms;
+  }
+}
+.node-panel-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 0 24px;
+}
+.node-panel-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+  padding-top: 6px;
+}
+.node-panel-tags span {
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: #aaa;
+  border: 1px solid #3a3a3a;
+  border-radius: 999px;
+  padding: 1px 9px;
+}
+.node-panel-close {
+  font: 22px/1 system-ui, sans-serif;
+  color: #999;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  width: 34px;
+  height: 34px;
+  cursor: pointer;
+}
+.node-panel-close:hover {
+  color: #fff;
+  border-color: #444;
+}
+.node-panel-scroll {
+  overflow: auto;
+  padding: 4px 28px 28px 24px;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.node-panel h2 {
+  margin: 8px 0 4px;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #fff;
+  text-wrap: balance;
+}
+.node-panel-meta,
+.node-panel-id,
+.node-panel-note {
+  margin: 0;
+  font-size: 12px;
+  color: #888;
+}
+.node-panel-id {
+  margin-top: 28px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: #666;
+}
+.node-panel-note {
+  margin-top: 20px;
+}
+.node-panel-summary {
+  color: #bbb;
+  font-style: italic;
+}
+.node-panel-body {
+  margin-top: 18px;
+  overflow-wrap: anywhere;
+}
+.node-panel-body h3,
+.node-panel-body h4,
+.node-panel-body h5,
+.node-panel-body h6 {
+  margin: 1.6em 0 0.4em;
+  color: #fff;
+  font-size: 15px;
+}
+.node-panel-body h3 {
+  font-size: 17px;
+}
+.node-panel-body p,
+.node-panel-body ul,
+.node-panel-body ol {
+  margin: 0.6em 0;
+}
+.node-panel-body ul,
+.node-panel-body ol {
+  padding-left: 1.4em;
+}
+.node-panel-body strong {
+  color: #fff;
+}
+.node-panel-body code {
+  font: 12.5px ui-monospace, monospace;
+  background: #262626;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.node-panel-body pre {
+  background: #111;
+  border: 1px solid #2c2c2c;
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow: auto;
+}
+.node-panel-body pre code {
+  background: none;
+  padding: 0;
+}
+.node-panel-body blockquote {
+  margin: 0.8em 0;
+  padding-left: 12px;
+  border-left: 2px solid #444;
+  color: #aaa;
+}
+.node-panel-body hr {
+  border: 0;
+  border-top: 1px solid #333;
+  margin: 1.4em 0;
+}
+.node-panel a {
+  color: #9ec1ff;
+}
+.node-panel-ref {
+  font: 12px ui-monospace, monospace;
+  color: #9ec1ff;
+  background: #9ec1ff14;
+  border: 1px solid #9ec1ff33;
+  border-radius: 4px;
+  padding: 0 5px;
+  cursor: pointer;
+}
+.node-panel-ref:hover {
+  background: #9ec1ff2a;
+}
+.node-panel-links h3 {
+  margin: 26px 0 6px;
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: #888;
+}
+.node-panel-links h3 span {
+  color: #555;
+  margin-left: 4px;
+}
+.node-panel-links ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.node-panel-links button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  color: #ccc;
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 4px 8px;
+  margin-left: -8px;
+  cursor: pointer;
+}
+.node-panel-links button:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+.node-panel :focus-visible {
+  outline: 1px solid #fff;
+  outline-offset: 1px;
+}

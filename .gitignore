@@ -19,3 +19,5 @@ dist/
 # Browser test output (may contain private data during manual testing)
 test-results/
 playwright-report/
+
+dist-report/

@@ -1,9 +1,10 @@
 // The viewer's reader for governor graphs: one log-replay snapshot (lib/snapshot.ts),
-// normalized to the viewer's node and edge types. Bodies never leave the server.
+// normalized to the viewer's node and edge types. Bodies stay out of the snapshot; the
+// live viewer's detail panel reads one at a time (governorNode).
 import { Flywheel } from "../lib/flywheel";
 import { parseEdge } from "../lib/model";
 import { snapshot, type GraphSnapshot } from "../lib/snapshot";
-import type { GraphEdge, GraphNode, Snapshot } from "../shared/types";
+import type { GraphEdge, GraphNode, NodeDetail, Snapshot } from "../shared/types";
 
 export async function governorGraph(repo: string): Promise<GraphSnapshot | null> {
   const s = await snapshot(new Flywheel(repo));
@@ -60,3 +61,16 @@ export function toViewer(repo: string, s: GraphSnapshot): Snapshot {
     loadedAt: new Date().toISOString(),
   };
 }
+
+export function governorNode(s: GraphSnapshot, id: string): NodeDetail | null {
+  const n = s.nodes[id];
+  if (!n?.live) return null;
+  const refs: Record<string, string> = {};
+  for (const [, prefix, slug] of n.content.matchAll(CITATION)) {
+    const kind = prefix === "rec" ? "record" : prefix;
+    const target = Object.values(s.nodes).find((m) => m.live && m.slug === slug && m.kind === kind);
+    if (target) refs[`${prefix}:${slug}`] = target.id;
+  }
+  return { id: n.id, slug: n.slug, title: n.title || n.slug, summary: n.summary, content: n.content, refs };
+}
+const CITATION = /\[(rec|state|plan):\s*([a-zA-Z0-9_-]+)\s*\]/g;
