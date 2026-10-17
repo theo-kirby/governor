@@ -19,7 +19,7 @@ const HELP = `governor — a record/state research graph on a Flywheel repositor
   governor fold                            print the tail and its declared impacts
   governor fold --apply PLAN.json          write claims, statuses, citations; tag records folded
   governor check [--threshold N]           enforce the rules (exit 1 on a violation)
-  governor render [--view plan] [-o FILE]  the state (or plan) snapshot as markdown
+  governor render [-o FILE]                the state snapshot as markdown
   governor head                            the repository head (cheap; for cache keys)
   governor orient                          frontier + tail impacts + recent records
   governor snapshot                        the whole graph as JSON

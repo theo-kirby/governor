@@ -13,7 +13,7 @@ The discipline:
 - Every state claim **cites** the records it rests on, and every record **declares** what
   it changes in state. A fresh agent reads state first and the record log only to dig.
 
-One graph holds records, state and plan. Statuses are Flywheel tags, and there are no
+One graph holds records and state. Statuses are Flywheel tags, and there are no
 files. Impacts and citations are slug lines in node content; governor derives the edges
 from them (see "Why relations are content").
 
@@ -32,7 +32,7 @@ from them (see "Why relations are content").
 |---|---|
 | The project | one **root** node, tagged `governor`. It is the tag scope for everything below. |
 | Membership | every node is **contained** in the root (flat). |
-| Kind | exactly one tag: `record`, `state`, or `plan`. |
+| Kind | exactly one tag: `record` or `state` (or the legacy `plan`, see below). |
 | State tree | **lineage** among state nodes. Top-level components are children of the root. A claim's parent is the component it belongs to. |
 | Record history | **lineage** among records, meaning "this followed from that result". The project's first records are children of the root. Several parents are fine. |
 | Status | exactly one tag on each state or plan node: `open`, `working`, `broken`, `blocked` or `superseded`. Governor enforces "exactly one"; Flywheel does not. |
@@ -67,8 +67,10 @@ writes what goes under them.
   rests on, `[rec: slug]`) and `## Negative knowledge` (what was tried and does not work,
   and why), then a generated `## Evidence` list of the records it cites. Citations
   accumulate: a fold keeps the claim's evidence and adds to it.
-- **Plan** (optional, Ouroboros's bets): a state-shaped node per horizon (`short`,
-  `medium`, `long`), single-writer like state. Its writer is the planner.
+- **Plan** (legacy): a state-shaped kind that Ouroboros's planner once wrote, one node per
+  horizon. Ouroboros has no planner now, and no role writes plan claims. Graphs that still
+  hold them stay valid: `check` reads a plan claim like a state claim, and
+  `governor render --view plan` still renders them. Do not add new ones.
 
 Slugs (`adjective-noun-####`) are Flywheel's own `slug_name`, minted on create, and are
 how anyone refers to a node in prose.
@@ -104,11 +106,8 @@ the tail warning does not count them, and a G5 dangling reference in them is a w
   `governor fold --apply` writes the bodies, statuses and citations and tags the records
   `folded`, in one commit. A fold may create a component (`"component": true`, no
   status) to group claims.
-- **The planner** writes plan claims the same way: a fold with `"view": "plan"` writes
-  `plan`-kind claims under a plan component, usually with `"folded": []` so the state
-  folder still owns the tail. Its commit reads `governor fold (plan): …`.
 - **Readers** run `governor orient` (frontier, tail, and recent records),
-  `governor render` (writes `STATE.md`; `--view plan` writes the plan), or
+  `governor render` (writes `STATE.md`), or
   `governor viz` (the hub view). Tools use `governor head` as a cache key and `--json`
   on `record`, `fold --apply` and `check`.
 
