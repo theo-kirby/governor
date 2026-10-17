@@ -6,21 +6,32 @@ import "./flywheel.css";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 type Camera = Point & { scale: number };
-type Props = { nodes: GraphNode[]; edges: GraphEdge[]; label?: string };
+export type HubTheme = "dark" | "light";
+type Props = { nodes: GraphNode[]; edges: GraphEdge[]; label?: string; theme?: HubTheme };
 
 // Status reads at a glance; everything else stays grey so the colour means something.
-const STATUS: Record<string, string> = {
-  open: "#d8a657",
-  broken: "#ea6962",
-  blocked: "#c397d8",
-  working: "#89b482",
-  done: "#7d8590",
-};
+// The light palette is for pages printed on paper colours (an Ouroboros run page).
+const PALETTES = {
+  dark: {
+    bg: "#131313", guide: "#aaaaaa", tree: "#bbbbbb", citation: "#d8a657", hub: "#ffffff", state: "#9aa7b7",
+    ring: "#fff", label: "#9a9a9a", sector: "#c8c8c8", focus: "#f0f0f0",
+    record: (age: number) => `hsl(212 14% ${Math.round(62 - 34 * age)}%)`, // older records fade outward
+    status: { open: "#d8a657", broken: "#ea6962", blocked: "#c397d8", working: "#89b482", done: "#7d8590" },
+  },
+  light: {
+    bg: "#fbfaf6", guide: "#8a857a", tree: "#9a958a", citation: "#b7863a", hub: "#1d1d1b", state: "#8a96a6",
+    ring: "#1d1d1b", label: "#6d6a63", sector: "#4a4740", focus: "#1d1d1b",
+    record: (age: number) => `hsl(212 16% ${Math.round(42 + 36 * age)}%)`,
+    status: { open: "#b7791f", broken: "#b03a2e", blocked: "#8e5bb0", working: "#2f7a4d", done: "#7d8590" },
+  },
+} as const;
 const statusOf = (n: GraphNode) =>
   n.tags?.find((t) => t.id.startsWith("status:"))?.id.slice(7) ??
   n.tags?.find((t) => t.name.startsWith("status:"))?.name.slice(7);
 
-export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
+export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Props) {
+  const P = PALETTES[theme];
+  const STATUS: Record<string, string> = P.status;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const scene = useMemo(() => layoutHub(nodes, edges), [nodes, edges]);
@@ -87,7 +98,7 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
       if (disposed) return;
       const dpr = Math.min(devicePixelRatio || 1, 2);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.fillStyle = "#131313";
+      ctx.fillStyle = P.bg;
       ctx.fillRect(0, 0, width, height);
       const s = camera.scale;
       const centre = point({ x: 0, y: 0 });
@@ -98,7 +109,7 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
       ctx.lineWidth = 0.8;
       for (const ring of scene.rings) {
         ctx.setLineDash(ring.kind === "state" ? [1, 7] : [1, 12]);
-        ctx.strokeStyle = "#aaaaaa";
+        ctx.strokeStyle = P.guide;
         ctx.globalAlpha = ring.kind === "state" ? 0.28 : 0.1;
         ctx.beginPath();
         ctx.arc(centre.x, centre.y, ring.radius * s, 0, Math.PI * 2);
@@ -126,7 +137,7 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
         if (!tree && !focus) continue;
         const a = point(scene.positions.get(e.source)!),
           b = point(scene.positions.get(e.target)!);
-        ctx.strokeStyle = e.relation === "citation" ? "#d8a657" : "#bbbbbb";
+        ctx.strokeStyle = e.relation === "citation" ? P.citation : P.tree;
         ctx.globalAlpha = focus ? 0.85 : related ? 0.08 : 0.45;
         ctx.lineWidth = focus ? 1.2 : 0.7;
         ctx.beginPath();
@@ -148,16 +159,15 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
         const r = isHub ? r0 * 1.6 : k === "state" ? r0 * 1.15 : r0 * 0.75;
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         if (isHub) {
-          ctx.fillStyle = "#ffffff";
+          ctx.fillStyle = P.hub;
         } else if (k === "state") {
-          ctx.fillStyle = (st && STATUS[st]) || "#9aa7b7";
+          ctx.fillStyle = (st && STATUS[st]) || P.state;
         } else {
-          const l = Math.round(62 - 34 * age(n)); // older records fade outward
-          ctx.fillStyle = `hsl(212 14% ${l}%)`;
+          ctx.fillStyle = P.record(age(n));
         }
         ctx.fill();
         if (n.id === active) {
-          ctx.strokeStyle = "#fff";
+          ctx.strokeStyle = P.ring;
           ctx.lineWidth = 1.4;
           ctx.beginPath();
           ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2);
@@ -169,11 +179,11 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
       // labels: sectors at overview, state titles when zoomed, the focus always
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      const text = (t: string, x: number, y: number, size: number, color = "#9a9a9a") => {
+      const text = (t: string, x: number, y: number, size: number, color: string = P.label) => {
         ctx.font = `${size}px Inter, system-ui, sans-serif`;
         ctx.fillStyle = color;
         ctx.save();
-        ctx.shadowColor = "#131313";
+        ctx.shadowColor = P.bg;
         ctx.shadowBlur = 4;
         ctx.fillText(t.length > 44 ? t.slice(0, 42) + "…" : t, x, y);
         ctx.restore();
@@ -182,7 +192,7 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
         for (const sec of bigSectors) {
           const mid = (sec.start + sec.end) / 2,
             rr = (scene.bandStart - 120) * s;
-          text(sec.title, centre.x + Math.cos(mid) * rr, centre.y + Math.sin(mid) * rr, 12, "#c8c8c8");
+          text(sec.title, centre.x + Math.cos(mid) * rr, centre.y + Math.sin(mid) * rr, 12, P.sector);
         }
       if (s >= 0.5)
         for (const n of shown) {
@@ -195,7 +205,7 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
         const n = byId.get(active)!;
         const p = point(scene.positions.get(active)!);
         const when = n.createdAt ? ` · ${n.createdAt.slice(0, 10)}` : "";
-        text(`${n.title}${when}`, p.x, p.y - NODE_RADIUS * s - 16, 13, "#f0f0f0");
+        text(`${n.title}${when}`, p.x, p.y - NODE_RADIUS * s - 16, 13, P.focus);
       }
       canvas.dataset.nodes = String(shown.length);
       canvas.dataset.sectors = String(scene.sectors.length);
@@ -300,7 +310,7 @@ export function HubCanvas({ nodes, edges, label = "Graph" }: Props) {
       canvas.removeEventListener("wheel", wheel);
       window.removeEventListener("keydown", key);
     };
-  }, [scene, nodes, edges]);
+  }, [scene, nodes, edges, theme]);
 
   return (
     <section className="fw-study" aria-label="Hub graph">

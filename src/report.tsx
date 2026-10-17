@@ -15,8 +15,11 @@ try {
   const Canvas = hub ? HubCanvas : FlywheelCanvas;
   root.dataset.viewer = "governor";
   root.dataset.layout = hub ? "hub" : "replica";
+  // The embedding page may ask for the light palette (the hub layout only; the replica stays dark).
+  const light = document.documentElement.dataset.theme === "light";
+  if (light && hub) document.documentElement.classList.add("report-light");
   createRoot(root).render(graph.nodes.length ? <>
-    <Canvas nodes={graph.nodes} edges={graph.edges} label="Committed research memory" />
+    <Canvas nodes={graph.nodes} edges={graph.edges} label="Committed research memory" {...(hub ? {theme: light ? "light" as const : "dark" as const} : {})} />
     <div className="report-tools">
       <button onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", {key:"f"}))}>Fit graph</button>
       <details><summary>Node titles ({graph.nodes.length})</summary><ul>{graph.nodes.map(n => <li key={n.id}>{n.title}</li>)}</ul></details>
