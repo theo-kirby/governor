@@ -12,6 +12,10 @@ import type { Point } from "./flywheel-model";
  *
  * Placement reads only parent links and state→record citations. Records nobody cites
  * borrow the angle of their causal neighbours.
+ *
+ * Claims under one parent are ordered by status, so claims of one status sit together.
+ * `groups` hold the claims of each status, and the records: each is drawn as a blob
+ * round its nodes (a metaball outline) that joins nodes close enough to one another.
  */
 export type Kind = "root" | "state" | "record" | "plan" | "other";
 export type HubRing = { radius: number; kind: "state" | "record" };
@@ -20,6 +24,14 @@ export type HubSector = {
   title: string;
   start: number;
   end: number;
+};
+/** The nodes of one status (or the records), and the blob outline round them. */
+export type HubGroup = {
+  kind: "status" | "record";
+  status?: string;
+  ids: string[];
+  /** Closed outlines in layout coordinates; fill them even-odd, since a ring of nodes leaves a hole. */
+  loops: Point[][];
 };
 export type HubScene = {
   hub: string | null;
@@ -30,15 +42,16 @@ export type HubScene = {
   anchors: Map<string, string[]>;
   rings: HubRing[];
   sectors: HubSector[];
+  groups: HubGroup[];
   bandStart: number;
   extent: number;
   hidden: Set<string>;
 };
 
 export const NODE_RADIUS = 36;
-const STATE_RING = 300;
+const STATE_RING = 190;
 const SPACING = NODE_RADIUS * 2.6;
-const RECORD_RING = NODE_RADIUS * 2.5;
+const RECORD_RING = NODE_RADIUS * 2.2;
 const RECORD_FILL = 0.8;
 const TAU = Math.PI * 2;
 
@@ -53,6 +66,126 @@ export function kindOf(node: GraphNode): Kind {
   }
   return "other";
 }
+
+/** Statuses in the order their arcs run round the wheel; anything else after them. */
+export const STATUS_ORDER = ["working", "open", "broken", "blocked", "done", "superseded"];
+
+export function statusOf(node: GraphNode): string | undefined {
+  return (
+    node.tags?.find((t) => t.id.startsWith("status:"))?.id.slice(7) ??
+    node.tags?.find((t) => t.name.startsWith("status:"))?.name.slice(7)
+  );
+}
+
+/** How far a blob reaches past each node, and how readily neighbours join (0 to 1: higher joins farther). */
+export const BLOB = {
+  state: { reach: NODE_RADIUS * 1.15 + 22, join: 0.25 },
+  record: { reach: NODE_RADIUS * 0.75 + 18, join: 0.75 },
+  /** How hard another group's node pushes a blob away, so neighbouring colours stay apart. */
+  avoid: 0.6,
+};
+
+/**
+ * The outline of a metaball field round `centres`: each centre adds (1 - d²/R²)² within
+ * R, and the outline is where the sum reaches `join`. A lone centre gets a circle of
+ * radius `reach`; two centres merge into one blob when they are within about
+ * 2R·sqrt(1 - sqrt(join / 2)) of each other. Each of `avoid` takes BLOB.avoid of the
+ * same kernel away, so a blob bends round other groups' nodes. Traced by marching squares.
+ */
+export function blobLoops(centres: Point[], reach: number, join: number, avoid: Point[] = []): Point[][] {
+  if (!centres.length) return [];
+  const R = reach / Math.sqrt(1 - Math.sqrt(join));
+  const R2 = R * R;
+  const cell = reach / 5;
+  const x0 = Math.min(...centres.map((c) => c.x)) - R - 2 * cell,
+    y0 = Math.min(...centres.map((c) => c.y)) - R - 2 * cell;
+  const nx = Math.ceil((Math.max(...centres.map((c) => c.x)) + R + 2 * cell - x0) / cell) + 1,
+    ny = Math.ceil((Math.max(...centres.map((c) => c.y)) + R + 2 * cell - y0) / cell) + 1;
+  const f = new Float32Array(nx * ny);
+  for (const [c, w] of [...centres.map((c) => [c, 1] as const), ...avoid.map((c) => [c, -BLOB.avoid] as const)]) {
+    const i0 = Math.max(0, Math.floor((c.x - R - x0) / cell)),
+      i1 = Math.min(nx - 1, Math.ceil((c.x + R - x0) / cell));
+    const j0 = Math.max(0, Math.floor((c.y - R - y0) / cell)),
+      j1 = Math.min(ny - 1, Math.ceil((c.y + R - y0) / cell));
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const dx = x0 + i * cell - c.x,
+          dy = y0 + j * cell - c.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < R2) {
+          const t = 1 - d2 / R2;
+          f[j * nx + i] += w * t * t;
+        }
+      }
+  }
+  // edge ids: horizontal (i,j)-(i+1,j) is j*nx+i; vertical (i,j)-(i,j+1) is nx*ny + j*nx+i
+  const H = nx * ny;
+  const at = (e: number): Point => {
+    const v = e >= H,
+      k = v ? e - H : e;
+    const i = k % nx,
+      j = Math.floor(k / nx);
+    const a = f[k],
+      b = v ? f[k + nx] : f[k + 1];
+    const t = (join - a) / (b - a);
+    return v ? { x: x0 + i * cell, y: y0 + (j + t) * cell } : { x: x0 + (i + t) * cell, y: y0 + j * cell };
+  };
+  const links = new Map<number, number[]>();
+  const link = (a: number, b: number) => {
+    (links.get(a) ?? links.set(a, []).get(a)!).push(b);
+    (links.get(b) ?? links.set(b, []).get(b)!).push(a);
+  };
+  for (let j = 0; j < ny - 1; j++)
+    for (let i = 0; i < nx - 1; i++) {
+      const tl = f[j * nx + i] >= join,
+        tr = f[j * nx + i + 1] >= join,
+        br = f[(j + 1) * nx + i + 1] >= join,
+        bl = f[(j + 1) * nx + i] >= join;
+      const top = j * nx + i,
+        right = H + j * nx + i + 1,
+        bottom = (j + 1) * nx + i,
+        left = H + j * nx + i;
+      const cut = [tl !== tr && top, tr !== br && right, br !== bl && bottom, bl !== tl && left].filter(
+        (e): e is number => e !== false,
+      );
+      if (cut.length === 2) link(cut[0], cut[1]);
+      else if (cut.length === 4) {
+        // a saddle: the centre's value decides which corners the outline cuts off
+        const centre =
+          (f[j * nx + i] + f[j * nx + i + 1] + f[(j + 1) * nx + i + 1] + f[(j + 1) * nx + i]) / 4 >= join;
+        if (tr !== centre) {
+          link(top, right);
+          link(bottom, left);
+        } else {
+          link(left, top);
+          link(right, bottom);
+        }
+      }
+    }
+  const loops: Point[][] = [];
+  const seen = new Set<number>();
+  for (const start of links.keys()) {
+    if (seen.has(start)) continue;
+    const loop: Point[] = [];
+    let prev = -1,
+      cur = start;
+    while (!seen.has(cur)) {
+      seen.add(cur);
+      loop.push(at(cur));
+      const [a, b] = links.get(cur)!;
+      const next = a !== prev ? a : b;
+      prev = cur;
+      cur = next;
+    }
+    if (loop.length > 2) loops.push(loop);
+  }
+  return loops;
+}
+
+const statusRank = (node: GraphNode) => {
+  const i = STATUS_ORDER.indexOf(statusOf(node) ?? "");
+  return i < 0 ? STATUS_ORDER.length : i;
+};
 
 const norm = (a: number) => ((a % TAU) + TAU) % TAU;
 
@@ -184,9 +317,11 @@ export function layoutHub(
     weigh(hub);
     const assign = (id: string, a0: number, a1: number) => {
       span.set(id, [a0, a1]);
-      const kids = [...(treeChildren.get(id) ?? [])].sort(
-        (p, q) => (byId.get(p)!.title < byId.get(q)!.title ? -1 : 1),
-      );
+      const kids = [...(treeChildren.get(id) ?? [])].sort((p, q) => {
+        const a = byId.get(p)!,
+          b = byId.get(q)!;
+        return statusRank(a) - statusRank(b) || (a.title < b.title ? -1 : 1);
+      });
       const total = kids.reduce((s, k) => s + weight.get(k)!, 0);
       let a = a0;
       for (const k of kids) {
@@ -266,7 +401,7 @@ export function layoutHub(
   // Slot packing, newest first: each record takes the free slot nearest its anchor on
   // the innermost ring that has one within reach, so a claim's evidence stacks outward
   // as a spoke (newest against the claim) instead of smearing round the circle.
-  const bandStart = (radius || 0) + STATE_RING * 1.1;
+  const bandStart = (radius || 0) + STATE_RING * 0.8;
   const slots: { r: number; used: Uint8Array }[] = [];
   const ringAt = (k: number) => {
     while (slots.length <= k) {
@@ -303,5 +438,39 @@ export function layoutHub(
   for (const ring of slots) rings.push({ radius: ring.r, kind: "record" });
   const outer = slots.length ? slots[slots.length - 1].r : bandStart;
   const extent = Math.max(STATE_RING, outer) + NODE_RADIUS * 2;
-  return { hub, positions, kind, depth, anchors, rings, sectors, bandStart, extent, hidden };
+
+  // ---- the groups: the claims of each status, then the records, each with its blob
+  const groups: HubGroup[] = [];
+  const byStatus = new Map<string, string[]>();
+  for (const n of state) {
+    const st = statusOf(n);
+    if (!st || n.id === hub || hidden.has(n.id) || !positions.has(n.id)) continue;
+    (byStatus.get(st) ?? byStatus.set(st, []).get(st)!).push(n.id);
+  }
+  const ranked = [...byStatus].sort(
+    ([a], [b]) => (STATUS_ORDER.indexOf(a) + 1 || 99) - (STATUS_ORDER.indexOf(b) + 1 || 99),
+  );
+  for (const [status, ids] of ranked) {
+    const others = ranked.filter(([st]) => st !== status).flatMap(([, rest]) => rest);
+    if (hub && positions.has(hub)) others.push(hub);
+    groups.push({
+      kind: "status",
+      status,
+      ids,
+      loops: blobLoops(
+        ids.map((id) => positions.get(id)!),
+        BLOB.state.reach,
+        BLOB.state.join,
+        others.map((id) => positions.get(id)!),
+      ),
+    });
+  }
+  const placedRecords = visibleRecords.filter((n) => positions.has(n.id)).map((n) => n.id);
+  if (placedRecords.length)
+    groups.push({
+      kind: "record",
+      ids: placedRecords,
+      loops: blobLoops(placedRecords.map((id) => positions.get(id)!), BLOB.record.reach, BLOB.record.join),
+    });
+  return { hub, positions, kind, depth, anchors, rings, sectors, groups, bandStart, extent, hidden };
 }

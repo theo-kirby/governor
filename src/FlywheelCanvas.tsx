@@ -703,11 +703,13 @@ export function FlywheelCanvas({
       hover = null;
       invalidate();
     };
+    // Shift + wheel zooms; a plain wheel scrolls the page (see HubCanvas)
     const wheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
       e.preventDefault();
       cancelAnimationFrame(animation);
       const p = local(e);
-      zoomAt(Math.exp(-clamp(e.deltaY, -100, 100) * 0.002), p.x, p.y);
+      zoomAt(Math.exp(-clamp(e.deltaY || e.deltaX, -100, 100) * 0.002), p.x, p.y);
     };
     const key = (e: KeyboardEvent) => {
       if (
@@ -779,7 +781,7 @@ export function FlywheelCanvas({
         className="fw-canvas"
         tabIndex={0}
         data-tagged-nodes={nodes.filter((node) => node.tags?.length).length}
-        aria-label={`${label}. Interactive orbital graph. ${nodes.length} source nodes. Scroll to zoom, drag to pan or move nodes. F fits, C folds, Escape clears selection.`}
+        aria-label={`${label}. Interactive orbital graph. ${nodes.length} source nodes. Shift + scroll to zoom, drag to pan or move nodes. F fits, C folds, Escape clears selection.`}
       />
       {panel && details && (
         <NodePanel

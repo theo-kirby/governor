@@ -1,44 +1,74 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "../shared/types";
 import type { Point } from "./flywheel-model";
-import { layoutHub, NODE_RADIUS } from "./hub-model";
+import { layoutHub, NODE_RADIUS, statusOf } from "./hub-model";
 import "./flywheel.css";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+/** How far an edge bows past a circular arc tangent to its spoke (hypergraph-viz settled on ~1.75–2.1). */
+const BOW = 1.75;
 type Camera = Point & { scale: number };
 export type HubTheme = "dark" | "light";
-type Props = { nodes: GraphNode[]; edges: GraphEdge[]; label?: string; theme?: HubTheme };
+type Status = "open" | "broken" | "blocked" | "working" | "done";
+/** Colours an embedding page may set over a palette: records run newest to oldest. */
+export type HubColours = {
+  citation?: string;
+  status?: Partial<Record<Status, string>>;
+  tint?: Partial<Record<Status | "record", string>>;
+  records?: string[];
+};
+type Props = {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  label?: string;
+  theme?: HubTheme;
+  colours?: HubColours;
+  /** Name every node that has room for it, rather than only the one in focus. */
+  names?: boolean;
+};
 
-// Status reads at a glance; everything else stays grey so the colour means something.
-// The light palette is for pages printed on paper colours (an Ouroboros run page).
+// Status reads at a glance; everything else stays quiet so the colour means something.
+// Both palettes are the Ouroboros run page's tokens (ok, warn, bad, acc and their -bg
+// tints), so the graph sits in that page as part of it. Records take the accent, newest
+// darkest; a blob is its colour's tint with a thin rim of the colour itself.
 const PALETTES = {
   dark: {
-    bg: "#131313", guide: "#aaaaaa", tree: "#bbbbbb", citation: "#d8a657", hub: "#ffffff", state: "#9aa7b7",
-    ring: "#fff", label: "#9a9a9a", sector: "#c8c8c8", focus: "#f0f0f0",
-    record: (age: number) => `hsl(212 14% ${Math.round(62 - 34 * age)}%)`, // older records fade outward
-    status: { open: "#d8a657", broken: "#ea6962", blocked: "#c397d8", working: "#89b482", done: "#7d8590" },
+    bg: "#17181a", guide: "#6a6964", tree: "#8a877f", citation: "#8fb4dc", hub: "#e7e4dc", state: "#9b978e",
+    ring: "#e7e4dc", label: "#9b978e", focus: "#e7e4dc",
+    record: (age: number) => `hsl(211 52% ${Math.round(72 - 30 * age)}%)`, // older records fade into the paper
+    status: { open: "#e0b25e", broken: "#e8867c", blocked: "#c3a0e0", working: "#7cc495", done: "#9b978e" },
+    tint: { open: "#2f2615", broken: "#33201d", blocked: "#2a2333", working: "#1b2a20", done: "#26272a", record: "#1e2a36" },
   },
   light: {
-    bg: "#fbfaf6", guide: "#8a857a", tree: "#9a958a", citation: "#b7863a", hub: "#1d1d1b", state: "#8a96a6",
-    ring: "#1d1d1b", label: "#6d6a63", sector: "#4a4740", focus: "#1d1d1b",
-    record: (age: number) => `hsl(212 16% ${Math.round(42 + 36 * age)}%)`,
-    status: { open: "#b7791f", broken: "#b03a2e", blocked: "#8e5bb0", working: "#2f7a4d", done: "#7d8590" },
+    bg: "#fbfaf6", guide: "#8a857a", tree: "#a9a497", citation: "#1f4e79", hub: "#1d1d1b", state: "#8a96a6",
+    ring: "#1d1d1b", label: "#6d6a63", focus: "#1d1d1b",
+    record: (age: number) => `hsl(209 52% ${Math.round(30 + 42 * age)}%)`,
+    status: { open: "#a46a10", broken: "#a4332b", blocked: "#7a4f9e", working: "#2f7a4d", done: "#7d8590" },
+    tint: { open: "#f6ecd9", broken: "#f5e1de", blocked: "#eee5f5", working: "#e4f0e7", done: "#ece8dd", record: "#e3ebf3" },
   },
 } as const;
-const statusOf = (n: GraphNode) =>
-  n.tags?.find((t) => t.id.startsWith("status:"))?.id.slice(7) ??
-  n.tags?.find((t) => t.name.startsWith("status:"))?.name.slice(7);
 
-export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Props) {
-  const P = PALETTES[theme];
+export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false }: Props) {
+  const P = useMemo(() => {
+    const base = PALETTES[theme], rs = colours?.records;
+    return {
+      ...base,
+      citation: colours?.citation ?? base.citation,
+      status: { ...base.status, ...colours?.status },
+      tint: { ...base.tint, ...colours?.tint },
+      record: rs?.length ? (age: number) => rs[Math.round(age * (rs.length - 1))] : base.record,
+    };
+  }, [theme, colours]);
   const STATUS: Record<string, string> = P.status;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const scene = useMemo(() => layoutHub(nodes, edges), [nodes, edges]);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  const namesRef = useRef(names);
+  namesRef.current = names;
   const redraw = useRef(() => {});
-  useEffect(() => redraw.current(), [selected]);
+  useEffect(() => redraw.current(), [selected, names]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -71,10 +101,15 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
         !scene.hidden.has(e.target),
     );
     for (const e of drawable) link(e.source, e.target);
-    // only the widest sectors get an overview label; the rest appear on zoom
-    const bigSectors = [...scene.sectors]
-      .sort((a, b) => b.end - b.start - (a.end - a.start))
-      .slice(0, 14);
+    const blobs = scene.groups.map((g) => {
+      const path = new Path2D();
+      for (const loop of g.loops) {
+        path.moveTo(loop[0].x, loop[0].y);
+        for (const p of loop.slice(1)) path.lineTo(p.x, p.y);
+        path.closePath();
+      }
+      return [g, path] as const;
+    });
 
     const point = (p: Point) => ({
       x: p.x * camera.scale + camera.x,
@@ -128,6 +163,48 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
       }
       ctx.setLineDash([]);
 
+      // groups: a blob round each status's claims and round the records, joining near neighbours
+      ctx.save();
+      ctx.translate(camera.x, camera.y);
+      ctx.scale(s, s);
+      ctx.lineWidth = 1 / s;
+      for (const [g, path] of blobs) {
+        const key = g.kind === "record" ? "record" : (g.status ?? "");
+        const rim = g.kind === "record" ? P.record(0.35) : (STATUS[key] ?? P.state);
+        ctx.fillStyle = (P.tint as Record<string, string>)[key] ?? P.tint.done;
+        ctx.globalAlpha = related ? 0.45 : 1;
+        ctx.fill(path, "evenodd");
+        ctx.strokeStyle = rim;
+        ctx.globalAlpha = related ? 0.12 : 0.4;
+        ctx.stroke(path);
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+
+      // An edge bows: it leaves its inner end along that node's spoke (the line from the hub)
+      // and curves into the other, so a parent's children fan out of one line.
+      // hypergraph-viz's bowPoints: the sag of a circular arc tangent to the spoke, times BOW.
+      const bow = (from: string, to: string, a: Point, b: Point) => {
+        const pa = scene.positions.get(from)!,
+          pb = scene.positions.get(to)!;
+        if (Math.hypot(pb.x, pb.y) < Math.hypot(pa.x, pa.y)) [a, b] = [b, a];
+        const inner = Math.hypot(pa.x, pa.y) <= Math.hypot(pb.x, pb.y) ? pa : pb;
+        const ri = Math.hypot(inner.x, inner.y);
+        const dx = b.x - a.x,
+          dy = b.y - a.y,
+          len = Math.hypot(dx, dy);
+        ctx.moveTo(a.x, a.y);
+        if (ri < 1 || len < 1) return void ctx.lineTo(b.x, b.y); // the hub has no spoke
+        const nx = inner.x / ri,
+          ny = inner.y / ri;
+        // past 45° off the spoke the arc would loop out; a far child gets the 45° bow
+        const alpha = clamp(Math.atan2(nx * dy - ny * dx, nx * dx + ny * dy), -Math.PI / 4, Math.PI / 4);
+        const sag = (-len / 2) * Math.tan(alpha / 2) * BOW;
+        const mx = (a.x + b.x) / 2 - (dy / len) * sag,
+          my = (a.y + b.y) / 2 + (dx / len) * sag;
+        ctx.quadraticCurveTo(2 * mx - (a.x + b.x) / 2, 2 * my - (a.y + b.y) / 2, b.x, b.y);
+      };
+
       // edges: the state tree always; citations and record history only around the focus
       for (const e of drawable) {
         const ks = scene.kind.get(e.source),
@@ -141,8 +218,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
         ctx.globalAlpha = focus ? 0.85 : related ? 0.08 : 0.45;
         ctx.lineWidth = focus ? 1.2 : 0.7;
         ctx.beginPath();
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
+        bow(e.source, e.target, a, b);
         ctx.stroke();
       }
 
@@ -166,6 +242,9 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
           ctx.fillStyle = P.record(age(n));
         }
         ctx.fill();
+        ctx.strokeStyle = P.bg; // a hairline of paper keeps packed nodes apart
+        ctx.lineWidth = Math.max(0.5, Math.min(2, 2.5 * s));
+        ctx.stroke();
         if (n.id === active) {
           ctx.strokeStyle = P.ring;
           ctx.lineWidth = 1.4;
@@ -188,19 +267,24 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
         ctx.fillText(t.length > 44 ? t.slice(0, 42) + "…" : t, x, y);
         ctx.restore();
       };
-      if (s < 0.5)
-        for (const sec of bigSectors) {
-          const mid = (sec.start + sec.end) / 2,
-            rr = (scene.bandStart - 120) * s;
-          text(sec.title, centre.x + Math.cos(mid) * rr, centre.y + Math.sin(mid) * rr, 12, P.sector);
-        }
-      if (s >= 0.5)
+      // names when asked for, small, under each node; one that would overlap a name already drawn
+      // is left out, so zooming in names more. Otherwise the overview is the shape, the hover names a node.
+      if (namesRef.current) {
+        const taken: { x: number; y: number; w: number; h: number }[] = [];
         for (const n of shown) {
-          if (scene.kind.get(n.id) !== "state" || n.id === active) continue;
+          if (n.id === scene.hub || n.id === active) continue;
           const p = point(scene.positions.get(n.id)!);
           if (p.x < 0 || p.y < 0 || p.x > width || p.y > height) continue;
-          text(n.title, p.x, p.y + NODE_RADIUS * s * 1.15 + 12, 11);
+          const t = n.title.length > 44 ? n.title.slice(0, 42) + "…" : n.title;
+          ctx.font = "10px Inter, system-ui, sans-serif";
+          const w = ctx.measureText(t).width + 6;
+          const y = p.y + NODE_RADIUS * s * (scene.kind.get(n.id) === "state" ? 1.15 : 0.75) + 10;
+          const box = { x: p.x - w / 2, y: y - 7, w, h: 14 };
+          if (taken.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
+          taken.push(box);
+          text(n.title, p.x, y, 10);
         }
+      }
       if (active && byId.has(active)) {
         const n = byId.get(active)!;
         const p = point(scene.positions.get(active)!);
@@ -282,10 +366,13 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
       hover = null;
       invalidate();
     };
+    // Shift + wheel zooms; a plain wheel scrolls the page the graph sits in. Some systems turn a
+    // shifted wheel sideways, so the delta is whichever axis moved.
     const wheel = (e: WheelEvent) => {
+      if (!e.shiftKey) return;
       e.preventDefault();
       const p = local(e);
-      zoomAt(Math.exp(-clamp(e.deltaY, -100, 100) * 0.002), p.x, p.y);
+      zoomAt(Math.exp(-clamp(e.deltaY || e.deltaX, -100, 100) * 0.002), p.x, p.y);
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === "f" || e.key === "0") fit();
@@ -310,7 +397,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
       canvas.removeEventListener("wheel", wheel);
       window.removeEventListener("keydown", key);
     };
-  }, [scene, nodes, edges, theme]);
+  }, [scene, nodes, edges, P]);
 
   return (
     <section className="fw-study" aria-label="Hub graph">
@@ -318,7 +405,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark" }: Pro
         ref={canvasRef}
         className="fw-canvas"
         tabIndex={0}
-        aria-label={`${label}. Hub layout: state at the centre, records on the rim. ${nodes.length} source nodes. Scroll to zoom, drag to pan. F fits, Escape clears selection.`}
+        aria-label={`${label}. Hub layout: state at the centre, records on the rim. ${nodes.length} source nodes. Shift + scroll to zoom, drag to pan. F fits, N names the nodes, Escape clears selection.`}
       />
     </section>
   );

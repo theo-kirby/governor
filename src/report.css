@@ -1,7 +1,7 @@
-html,body,#root{margin:0;width:100%;height:100%;background:#131313;color:#eee;font:14px/1.5 system-ui,sans-serif;color-scheme:dark;overflow:hidden}
+html,body,#root{margin:0;width:100%;height:100%;background:#17181a;color:#e7e4dc;font:14px/1.5 system-ui,sans-serif;color-scheme:dark;overflow:hidden}
 .report-tools{position:fixed;z-index:2;top:12px;left:12px;right:12px;display:flex;align-items:flex-start;gap:8px;pointer-events:none}
-.report-tools>*{pointer-events:auto;background:#242424;border:1px solid #555;border-radius:5px;color:#eee;font:inherit;padding:6px 10px}
+.report-tools>*{pointer-events:auto;background:#26272a;border:0;border-radius:5px;color:#e7e4dc;font:inherit;padding:6px 10px}
 .report-tools button,.report-tools summary{cursor:pointer}.report-tools details{max-width:75%;max-height:45vh;overflow:auto}.report-tools ul{padding-left:20px;overflow-wrap:anywhere}.report-message{padding:20px}
 html.report-light,html.report-light body,html.report-light #root{background:#fbfaf6;color:#1d1d1b;color-scheme:light}
-html.report-light .report-tools>*{background:#fbfaf6;border-color:#d6d1c4;color:#1d1d1b}
+html.report-light .report-tools>*{background:#ece8dd;color:#1d1d1b}
 html.report-light .fw-study{background:#fbfaf6}

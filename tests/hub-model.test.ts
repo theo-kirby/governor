@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { GraphEdge, GraphNode } from "../shared/types";
-import { layoutHub, relaxAngles } from "../src/hub-model";
+import { blobLoops, layoutHub, relaxAngles } from "../src/hub-model";
 
 const node = (id: string, kind: string, createdAt?: string): GraphNode => ({
   id,
@@ -32,6 +32,16 @@ const angle = (p: { x: number; y: number }) => Math.atan2(p.y, p.x);
 const gap = (a: number, b: number) => {
   const d = Math.abs(a - b) % (2 * Math.PI);
   return Math.min(d, 2 * Math.PI - d);
+};
+
+const inside = (p: { x: number; y: number }, loop: { x: number; y: number }[]) => {
+  let hit = false;
+  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+    const a = loop[i],
+      b = loop[j];
+    if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+  }
+  return hit;
 };
 
 function wheel() {
@@ -114,4 +124,55 @@ test("relaxAngles keeps order and enforces the gap, wrapping around", () => {
     const next = sorted[(i + 1) % sorted.length] + (i + 1 === sorted.length ? 2 * Math.PI : 0);
     assert.ok(next - sorted[i] >= 0.2 - 1e-6);
   }
+});
+
+test("claims are grouped by status, records apart, and each group has its blob", () => {
+  const claim = (id: string, status: string) => ({
+    ...node(id, "state"),
+    tags: [{ id: "graph:state", name: "state" }, { id: `status:${status}`, name: status }],
+  });
+  // titles alone would interleave the statuses: a-open, b-working, c-open, d-working, e-broken
+  const nodes = [
+    node("hub", "root"),
+    claim("a", "open"),
+    claim("b", "working"),
+    claim("c", "open"),
+    claim("d", "working"),
+    claim("e", "broken"),
+    node("r1", "record", "2026-01-01T00:00:00Z"),
+    node("r2", "record", "2026-01-02T00:00:00Z"),
+  ];
+  const edges = ["a", "b", "c", "d", "e"].map((c) => parent("hub", c));
+  edges.push(parent("hub", "r1"), parent("r1", "r2"), cite("a", "r1"), cite("d", "r2"));
+  const s = layoutHub(nodes, edges);
+  assert.deepEqual(
+    s.groups.map((g) => [g.status ?? g.kind, [...g.ids].sort()]),
+    [
+      ["working", ["b", "d"]],
+      ["open", ["a", "c"]],
+      ["broken", ["e"]],
+      ["record", ["r1", "r2"]],
+    ],
+  );
+  for (const g of s.groups)
+    for (const id of g.ids)
+      assert.ok(
+        g.loops.some((loop) => inside(s.positions.get(id)!, loop)),
+        `${id} sits inside its ${g.status ?? g.kind} blob`,
+      );
+});
+
+test("a blob is a circle round a lone node and joins two nodes only when they are close", () => {
+  const [one] = blobLoops([{ x: 0, y: 0 }], 50, 0.25);
+  for (const p of one) assert.ok(Math.abs(Math.hypot(p.x, p.y) - 50) < 2, `${p.x},${p.y}`);
+  const near = blobLoops([{ x: 0, y: 0 }, { x: 90, y: 0 }], 50, 0.25);
+  assert.equal(near.length, 1);
+  assert.ok(inside({ x: 45, y: 0 }, near[0]), "the neck between them is inside");
+  assert.equal(blobLoops([{ x: 0, y: 0 }, { x: 400, y: 0 }], 50, 0.25).length, 2);
+  // a ring of nodes leaves a hole: an outer and an inner outline
+  const ring = Array.from({ length: 24 }, (_, k) => ({
+    x: Math.cos((k * Math.PI) / 12) * 300,
+    y: Math.sin((k * Math.PI) / 12) * 300,
+  }));
+  assert.equal(blobLoops(ring, 50, 0.25).length, 2);
 });
