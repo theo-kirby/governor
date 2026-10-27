@@ -1,7 +1,7 @@
 # governor
 
 A record/state research graph on [Flywheel](https://docs.flywheel.paradigma.inc): the
-conventions, the agent skills, a small CLI, and the hub viewer. The memory is
+conventions, the agent skills, a small CLI, and a graph viewer. The memory is
 **one Flywheel graph** in the project's local repository (`.flywheel/`, pushed and pulled
 through a hosted Flywheel repository); governor keeps no data of its own.
 
@@ -19,7 +19,8 @@ The model and its rules are in [docs/CONVENTIONS.md](docs/CONVENTIONS.md).
 Needs Node ≥ 24.15 and the `flywheel` CLI (`npm install -g @paradigma-inc/flywheel`).
 
 ```sh
-git clone git@github.com:theo-kirby/governor.git && cd governor && npm ci
+git clone https://github.com/theo-kirby/governor.git && cd governor
+npm ci && npm run build        # the build is what `governor viz` serves
 npm link                       # puts `governor` on PATH
 ```
 
@@ -33,114 +34,115 @@ governor skills install                  # governor-orient, governor-record, gov
 
 ## Commands
 
-| | |
-|---|---|
-| `governor orient` | the frontier, the unfolded tail with its impacts, recent records |
-| `governor record --title T --body F --parent SLUG (--impact "SLUG: Δ" \| --new "name: Δ" \| --none "why")` | append one record |
-| `governor fold` / `governor fold --apply plan.json` | list the tail / apply a fold |
-| `governor check` | the rules G1–G7; exit 1 on a violation |
-| `governor render -o STATE.md` | the state as markdown |
-| `governor snapshot` | the whole graph as JSON |
-| `governor viz [--port N]` | the hub viewer for this repository |
+|                                                                                                            |                                                                  |
+| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `governor orient`                                                                                          | the frontier, the unfolded tail with its impacts, recent records |
+| `governor record --title T --body F --parent SLUG (--impact "SLUG: Δ" \| --new "name: Δ" \| --none "why")` | append one record                                                |
+| `governor fold` / `governor fold --apply plan.json`                                                        | list the tail / apply a fold                                     |
+| `governor check`                                                                                           | the rules G1–G7; exit 1 on a violation                           |
+| `governor render -o STATE.md`                                                                              | the state as markdown                                            |
+| `governor head`                                                                                            | the repository head (cheap; a cache key)                         |
+| `governor snapshot`                                                                                        | the whole graph as JSON                                          |
+| `governor viz [--port N]`                                                                                  | the hub viewer for this repository                               |
+| `governor skills install [--user \| --target DIR]`                                                         | copy the agent skills                                            |
 
-Run inside a git worktree, every command resolves to the main checkout's repository.
-Writes serialize on a lock in `.governor/`, and a commit never sweeps up staged work
-governor did not stage. Reads replay the repository log (about 0.5 s for 1,100 nodes),
-so nothing is mirrored into files.
+`governor help` lists every option. Run inside a git worktree, every command resolves to
+the main checkout's repository. Writes serialize on a lock in `.governor/`, and a commit
+never sweeps up staged work governor did not stage. Reads replay the repository log
+(about 0.5 s for 1,100 nodes), so nothing is mirrored into files.
 
-## The hub view
+## The viewer
 
-`governor viz` (or the viewer below with `?layout=hub`) draws the graph as one wheel:
-- **the root** at the centre;
-- **claims** on rings by depth, each subtree in a sector sized by its claims and
-  evidence;
-- **records** on the rim, packed newest-first into the free slot nearest the claims they
-  impact or that cite them, so each claim's evidence stacks outward as a tooth.
+A local, read-only graph viewer with two layouts on a Canvas 2D:
 
-Hover or click to see a node's citations and history. `src/hub-model.ts` is the layout.
+- **Hub** (`?layout=hub`, the default for `governor viz`): one graph drawn as a wheel.
+  The root is at the centre; claims sit on rings by depth, each subtree in a sector sized
+  by its claims and evidence; records sit on the rim, packed newest-first into the free
+  slot nearest the claims they impact or that cite them, so each claim's evidence stacks
+  outward as a tooth. Status tags colour the claims. `src/hub-model.ts` is the layout.
+- **Orbital** (the default otherwise): disconnected graphs on dashed orbits, generation
+  rings inside each one, and long runs and leaf fans folded into stacked-circle
+  summaries. `src/flywheel-model.ts` is the layout. It also opens any Flywheel
+  repository that is not a governor graph.
 
+Click a node to open its detail panel (body, citations, history). Drag to pan,
+**Shift + scroll** or **+/-** to zoom, **F** / **0** to fit, **Escape** to clear the
+selection. In the orbital view, **C** folds the graph again; in the hub view, **N** names
+the nodes.
 
-## The viewer (from flywheel-viz)
-
-A local, read-only Flywheel graph viewer. The live-view replica with dotted generation rings is the sole renderer and the version maintained on `main`. It opens on a charcoal canvas with neutral guides, white roots, colored tag halos, pink stacked-circle summaries, straight edges, and zoom-dependent labels. No renderer parameter is needed.
+### Running it
 
 ```sh
-npm install
-npm run dev
+npm run dev      # API on :4311, Vite on http://127.0.0.1:5173
+npm start        # production server on http://127.0.0.1:4311 (after npm run build)
 ```
 
-Open **http://127.0.0.1:5173/?demo** for the synthetic 16-node demo, or **http://127.0.0.1:5173/?repo=../lab** for a local repository. For the production server, use port 4311.
+| URL parameter |                                                                             |
+| ------------- | --------------------------------------------------------------------------- |
+| `?repo=PATH`  | read the Flywheel repository at `PATH` (remembered in local storage)        |
+| `?layout=hub` | the hub layout                                                              |
+| `?demo`       | a synthetic 16-node graph (`src/demo.ts`); no API calls                     |
+| `?debug`      | synthetic graph controls (shape, size, seed, links); no repository requests |
 
-The old radial, adaptive-ring, focus-lens, radial-atlas, research-rivers, and ring-style experiments have been retired. Old renderer and ring-style URL parameters are ignored.
+| Environment variable      |                                                                             |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `FLYWHEEL_REPO`           | the repository to open when the URL names none                              |
+| `FLYWHEEL_REPO_LOCK=1`    | serve `FLYWHEEL_REPO` only, whatever `?repo=` says                          |
+| `GOVERNOR_DEFAULT_PARAMS` | URL parameters to apply when the URL names no repository, e.g. `layout=hub` |
+| `PORT`                    | the server port (default 4311)                                              |
 
-## Graph interaction
+With no repository, the viewer opens the demo. Topology loads first, then tags for the
+same commit. Reload to read new commits.
 
-- Drag the background to pan, drag nodes to move them, and scroll to zoom.
-- Click a component outline to focus, a node to highlight its relationships, or stacked circles to expand a folded run or fan.
-- **F** / **0** fits the graph, **C** folds it again, **Escape** clears selection, and **+/-** zooms.
-- Dotted generation rings fade when densely packed; component boundaries use faint solid outlines and component orbits use dashed guides.
+### Report embed
 
-The normal viewer has no header, inspector, or control panel. Loading and failed reads leave a blank screen; failures are reported in the browser console. Reload to read current graph data. Source repositories remain read-only.
-
-## Demo and debug fixtures
-
-`?demo` bypasses all repository settings and API calls without changing the remembered repository. An unconfigured viewer also opens the demo. Edit `src/demo.ts` to change the synthetic nodes, parent IDs, tags, and semantic relationships.
-
-`?debug` opens synthetic graph controls and takes precedence over repository and demo settings. Choose a shape, node count, branches, seed, cross-links, link density, and tagged fraction. The 1,000-node research preset exercises folding and larger layouts. Fit, reset, and copy-link controls are available; settings persist in the URL. Debug mode makes no repository requests.
+`npm run build:report` writes `dist-report/`: a self-contained script and stylesheet
+(`assets.json`) that draws a graph from a `<script id="flywheel-snapshot"
+type="application/json">` on the host page, with no network access, and
+`report-export.mjs`, which prints a consistent committed snapshot of a repository as JSON
+(`node dist-report/report-export.mjs PATH`). The host page may set
+`data-theme="light"` and `data-layout="organic"` on `<html>`, colours in
+`window.GRAPH_THEME`, and node bodies in a `<script id="flywheel-bodies">` (see
+`src/report.tsx`); without bodies, nodes show titles only.
 
 ## Architecture
 
-- `src/App.tsx`: repository selection, topology loading, and background tag enrichment.
-- `src/FlywheelCanvas.tsx`: Canvas 2D rendering, dotted guides, gestures, selection, and folding.
-- `src/flywheel-model.ts`: run/fan projection, generation rings, and component layout.
-- `src/collapse-chains.ts`: shared reversible chain projection used by the replica.
-- `src/DebugView.tsx` and `src/debug-graphs.ts`: synthetic fixtures and reproducible controls.
-- `server/adapter.ts`: validated, paginated, read-only Flywheel CLI calls and commit-head guards.
-- `server/app.ts`: loopback API, path validation, host/origin checks, and required request header.
+- `cli/main.ts`, `lib/`: the CLI; snapshot from the repository log, rules, render, writes.
+- `skills/`: the agent skills that `governor skills install` copies.
+- `server/app.ts`: loopback API, path validation, host/origin checks, a required request
+  header, and a content security policy in production.
+- `server/governor.ts`: governor graphs for the viewer; `server/adapter.ts`: validated,
+  paginated, read-only Flywheel CLI calls for other repositories.
+- `src/App.tsx`: repository selection and loading; `src/HubCanvas.tsx` and
+  `src/FlywheelCanvas.tsx`: the two renderers; `src/NodePanel.tsx`: the detail panel.
+- `src/report.tsx`, `server/report-export.ts`, `shared/report.ts`: the report embed.
 - `shared/types.ts`: normalized graph types.
-
-React + TypeScript + Vite provide the app shell; Fastify serves the local API. The browser uses Canvas 2D without Cytoscape. See [replica research and fidelity limits](docs/flywheel-live-study.md).
-
-For Flywheel repositories, topology is committed state; tags load afterward for the same commit. The viewer does not edit graphs, render node bodies, poll automatically, or synchronize externally. Tag colors are stable hashes. Snapshots stay in memory; only the last successful repository path is stored locally.
 
 ## Development and checks
 
 ```sh
-npm run check
+npm run check                     # unit tests and the build
 npx playwright install chromium
-npm run test:ui
+npm run test:ui                   # browser tests
 npm run format
 ```
 
-`PLAYWRIGHT_EXECUTABLE_PATH` can select an existing Chromium executable. `VIEWER_URL=http://127.0.0.1:4311 npm run test:ui` targets an existing production viewer. Tests use synthetic fixtures and cover adapters, API safeguards, projection/layout, repository loading, dotted defaults, folding, gestures, resize, and debug URL replay.
+`PLAYWRIGHT_EXECUTABLE_PATH` selects an existing Chromium. `VIEWER_URL=http://127.0.0.1:4311
+npm run test:ui` targets a running production viewer (for example, when port 5173 is in
+use). All test fixtures are synthetic.
 
-## Privacy and source graph
+## Privacy
 
-- Serve on loopback only. No hosting, graph upload, or external sync.
-- Keep databases, backups, graph exports, credentials, screenshots, and real-data
-  fixtures out of Git, including in this private repository.
-- Render titles as canvas text, never HTML. No node-body requests, Markdown
-  rendering, remote images, remote fonts, or external assets are needed.
-- The production server sets a restrictive content security policy. The API
-  does not log graph content or repository paths.
-- Graph writes, reconciliation, commits, and backups stay in the existing
-  Flywheel CLI workflow. Never edit graph tables or copy a live SQLite database.
+- The server listens on loopback only. There is no hosting, upload or external sync.
+- Keep graph databases, backups, exports, credentials, screenshots and real-data fixtures
+  out of Git (`.gitignore` covers the usual ones).
+- Titles render as canvas text, never HTML, and the viewer loads no remote assets. The
+  API does not log graph content or repository paths.
+- The viewer never writes to a graph. Graph writes stay in governor and the Flywheel CLI;
+  never edit graph tables or copy a live SQLite database.
 
-The local development graph is `~/lab/.flywheel/` on Air (`mba`). Air is its sole
-writer. Lab uses immutable evidence records and mutable state handoffs;
-state-to-record citations are not automatically causal edges. Lab workflow
-references are `~/lab/docs/FLYWHEEL.md` and `~/lab/STATE.md`.
+## Flywheel docs
 
-## Background
-
-This is an independent viewer for the official Flywheel repository format,
-separate from Paradigma's UI and the archived `flywheel-local` implementation.
-It was started after the installed npm CLI 0.2.78's `flywheel ui` failed with
-`ui_web_files_missing` on 2026-10-09. The viewer source lives in the private
-`theo-kirby/flywheel-viz` repository; the local research graph stays Git-ignored.
-
-- [Flywheel installation](https://docs.flywheel.paradigma.inc/install)
-- [Flywheel repository model](https://docs.flywheel.paradigma.inc/concepts/repos)
-- [Flywheel CLI reference](https://docs.flywheel.paradigma.inc/cli)
-
-Browser tests can target an existing production viewer with `VIEWER_URL=http://127.0.0.1:4311 npm run test:ui` when port 5173 is occupied.
+- [Installation](https://docs.flywheel.paradigma.inc/install)
+- [Repository model](https://docs.flywheel.paradigma.inc/concepts/repos)
+- [CLI reference](https://docs.flywheel.paradigma.inc/cli)

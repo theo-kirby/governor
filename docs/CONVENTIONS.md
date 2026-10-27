@@ -49,7 +49,7 @@ is a dangling reference.
 
 Flywheel 0.2.78 has real edges, and governor first used them. But a local repository
 re-validates every semantic edge on every staged operation, each with a recursive
-containment query, so with Cadex's ~3,000 relations every write took minutes. Lines in
+containment query, so on a graph with ~3,000 relations every write took minutes. Lines in
 content cost nothing to write, are readable without the graph, and are what records and
 claims carried anyway. If Flywheel validates edges incrementally, a one-off migration can
 turn the lines into edges without changing the model.
@@ -67,9 +67,8 @@ writes what goes under them.
   rests on, `[rec: slug]`) and `## Negative knowledge` (what was tried and does not work,
   and why), then a generated `## Evidence` list of the records it cites. Citations
   accumulate: a fold keeps the claim's evidence and adds to it.
-- **Plan** (legacy): a state-shaped kind that Ouroboros's planner once wrote, one node per
-  horizon. Ouroboros has no planner now, and no role writes plan claims. Graphs that still
-  hold them stay valid: `check` reads a plan claim like a state claim, and
+- **Plan** (legacy): a state-shaped kind that an earlier planner role wrote, one node per
+  horizon. No role writes plan claims now. Graphs that still hold them stay valid: `check` reads a plan claim like a state claim, and
   `governor render --view plan` still renders them. Do not add new ones.
 
 Slugs (`adjective-noun-####`) are Flywheel's own `slug_name`, minted on create, and are
@@ -94,7 +93,7 @@ Warnings that do not fail the check:
   simply the previous record of the same session; advisory only).
 
 Imported records are the records written by commits whose message starts `governor migrate`
-(a graph imported from an older memory). They predate the impact lines, so G3 skips them,
+(a graph imported from an older memory by an importer that governor no longer ships). They predate the impact lines, so G3 skips them,
 the tail warning does not count them, and a G5 dangling reference in them is a warning.
 
 ## Roles
@@ -122,5 +121,5 @@ single-writer rule mechanical rather than a matter of manners.
 
 A snapshot replays the repository log: one paginated call returns every operation with
 each node's initial values. Then `node:get` runs only for nodes whose fields changed after
-creation, which is state, never records. On Cadex's 1,135 nodes the log is 0.5 s.
+creation, which is state, never records. On a graph of 1,135 nodes the log is 0.5 s.
 Snapshots are cached by head.
