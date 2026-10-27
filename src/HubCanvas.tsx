@@ -226,10 +226,10 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         const key = g.kind === "record" ? "record" : (g.status ?? "");
         const rim = g.kind === "record" ? P.record(0.35) : (STATUS[key] ?? P.state);
         ctx.fillStyle = (P.tint as Record<string, string>)[key] ?? P.tint.done;
-        ctx.globalAlpha = related ? 0.45 : 1;
+        ctx.globalAlpha = related ? 0.75 : 1;
         ctx.fill(path, "evenodd");
         ctx.strokeStyle = rim;
-        ctx.globalAlpha = related ? 0.12 : 0.4;
+        ctx.globalAlpha = related ? 0.25 : 0.4;
         ctx.stroke(path);
       }
       ctx.restore();
@@ -275,7 +275,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         const a = point(scene.positions.get(e.source)!),
           b = point(scene.positions.get(e.target)!);
         ctx.strokeStyle = e.relation === "citation" ? P.citation : P.tree;
-        ctx.globalAlpha = focus ? 0.85 : related ? 0.06 : tree ? 0.45 : 0.16;
+        ctx.globalAlpha = focus ? 0.85 : related ? (tree ? 0.25 : 0.1) : tree ? 0.45 : 0.16;
         ctx.lineWidth = focus ? 1.8 : tree ? 1.2 : 0.9;
         ctx.beginPath();
         bow(e.source, e.target, a, b);
@@ -290,7 +290,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         const k = scene.kind.get(n.id);
         const isHub = n.id === scene.hub;
         const st = statusOf(n);
-        ctx.globalAlpha = related && !related.has(n.id) ? 0.18 : 1;
+        ctx.globalAlpha = related && !related.has(n.id) ? 0.45 : 1;
         ctx.beginPath();
         const r = isHub ? r0 * 1.6 : k === "state" ? r0 * 1.15 : r0 * 0.75;
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);

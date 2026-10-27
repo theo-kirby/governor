@@ -23,3 +23,5 @@ html.report-light .node-panel-links button{color:#1d1d1b}html.report-light .node
 html.report-light .node-panel :focus-visible{outline-color:#1d1d1b}
 /* a little wider than the full viewer's half: HubCanvas keeps the graph in the rest (PANEL) */
 @media (min-width:800px){.node-panel{width:calc(56% - 24px)}}
+/* the panel scrolls without a visible bar */
+.node-panel-scroll{scrollbar-width:none}.node-panel-scroll::-webkit-scrollbar{display:none}
