@@ -176,3 +176,15 @@ test("a blob is a circle round a lone node and joins two nodes only when they ar
   }));
   assert.equal(blobLoops(ring, 50, 0.25).length, 2);
 });
+
+test("the organic layout keeps the hub centred and is the same on every load", () => {
+  const { nodes, edges } = wheel();
+  const a = layoutHub(nodes, edges, { organic: true }), b = layoutHub(nodes, edges, { organic: true });
+  assert.deepEqual([...a.positions], [...b.positions]);
+  assert.deepEqual(a.positions.get("hub"), { x: 0, y: 0 });
+  const placed = [...a.positions].filter(([id]) => !a.hidden.has(id)).map(([, p]) => p);
+  for (const p of placed) assert.ok(radius(p) + 36 <= a.extent, "every node fits inside the extent");
+  for (let i = 0; i < placed.length; i++)
+    for (let j = i + 1; j < placed.length; j++)
+      assert.ok(Math.hypot(placed[i].x - placed[j].x, placed[i].y - placed[j].y) > 36, "no two nodes overlap");
+});

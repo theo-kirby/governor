@@ -231,10 +231,71 @@ export function relaxAngles(angles: number[], gap: number): number[] {
   return result;
 }
 
+/** A number in [-1, 1) that is the same for the same id on every load. */
+function jitter(id: string, salt: number): number {
+  let h = 2166136261 ^ salt;
+  for (const c of id) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  return ((h >>> 0) / 2 ** 32) * 2 - 1;
+}
+
+/**
+ * Distorts the wheel a little, in place, so it reads less like a diagram: every node starts
+ * a little off its ring, then a short force pass pulls linked nodes slightly together and
+ * pushes overlapping ones apart, while a firm pull back to its ring position keeps the
+ * rings readable. Deterministic, so the same graph always looks the same.
+ */
+function loosen(positions: Map<string, Point>, edges: GraphEdge[], hub: string | null, hidden: Set<string>) {
+  const ids = [...positions.keys()].filter((id) => !hidden.has(id));
+  const index = new Map(ids.map((id, i) => [id, i]));
+  const home = ids.map((id) => positions.get(id)!);
+  const xs = new Float64Array(ids.length), ys = new Float64Array(ids.length);
+  ids.forEach((id, i) => {
+    const r = id === hub ? 0 : SPACING * 0.22;
+    xs[i] = home[i].x + jitter(id, 1) * r;
+    ys[i] = home[i].y + jitter(id, 2) * r;
+  });
+  const springs: [number, number, number, number][] = []; // a, b, rest length, strength
+  for (const e of edges) {
+    const a = index.get(e.source), b = index.get(e.target);
+    if (a === undefined || b === undefined || a === b) continue;
+    if (e.source === hub || e.target === hub) continue; // the hub's spokes would pull everything in
+    const parent = e.relation === "parent" || e.kind === "containment";
+    springs.push([a, b, parent ? SPACING * 1.0 : SPACING * 1.6, parent ? 0.012 : 0.004]);
+  }
+  const gap = NODE_RADIUS * 2.3;
+  for (let pass = 0; pass < 240; pass++) {
+    const cool = 1 - pass / 240;
+    const dx = new Float64Array(ids.length), dy = new Float64Array(ids.length);
+    for (const [a, b, rest, k] of springs) {
+      const x = xs[b] - xs[a], y = ys[b] - ys[a], d = Math.hypot(x, y) || 1;
+      const f = ((d - rest) / d) * k * cool;
+      dx[a] += x * f; dy[a] += y * f;
+      dx[b] -= x * f; dy[b] -= y * f;
+    }
+    for (let i = 0; i < ids.length; i++) {
+      dx[i] += (home[i].x - xs[i]) * 0.08;
+      dy[i] += (home[i].y - ys[i]) * 0.08;
+      for (let j = i + 1; j < ids.length; j++) {
+        const x = xs[j] - xs[i], y = ys[j] - ys[i], d = Math.hypot(x, y) || 0.01;
+        if (d >= gap) continue;
+        const push = ((gap - d) / d) * 0.5;
+        dx[i] -= x * push; dy[i] -= y * push;
+        dx[j] += x * push; dy[j] += y * push;
+      }
+    }
+    for (let i = 0; i < ids.length; i++) {
+      if (ids[i] === hub) continue;
+      xs[i] += dx[i];
+      ys[i] += dy[i];
+    }
+  }
+  ids.forEach((id, i) => positions.set(id, { x: xs[i], y: ys[i] }));
+}
+
 export function layoutHub(
   nodes: GraphNode[],
   edges: GraphEdge[],
-  options: { includePlan?: boolean } = {},
+  options: { includePlan?: boolean; organic?: boolean } = {},
 ): HubScene {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const kind = new Map(nodes.map((n) => [n.id, kindOf(n)]));
@@ -401,7 +462,7 @@ export function layoutHub(
   // Slot packing, newest first: each record takes the free slot nearest its anchor on
   // the innermost ring that has one within reach, so a claim's evidence stacks outward
   // as a spoke (newest against the claim) instead of smearing round the circle.
-  const bandStart = (radius || 0) + STATE_RING * 0.8;
+  const bandStart = (radius || 0) + STATE_RING * (options.organic ? 0.5 : 0.8);
   const slots: { r: number; used: Uint8Array }[] = [];
   const ringAt = (k: number) => {
     while (slots.length <= k) {
@@ -437,7 +498,11 @@ export function layoutHub(
   }
   for (const ring of slots) rings.push({ radius: ring.r, kind: "record" });
   const outer = slots.length ? slots[slots.length - 1].r : bandStart;
-  const extent = Math.max(STATE_RING, outer) + NODE_RADIUS * 2;
+  let extent = Math.max(STATE_RING, outer) + NODE_RADIUS * 2;
+  if (options.organic) {
+    loosen(positions, edges, hub, hidden);
+    extent = Math.max(...[...positions.values()].map((p) => Math.hypot(p.x, p.y))) + NODE_RADIUS * 2;
+  }
 
   // ---- the groups: the claims of each status, then the records, each with its blob
   const groups: HubGroup[] = [];

@@ -2,12 +2,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "../shared/types";
 import type { Point } from "./flywheel-model";
 import { layoutHub, NODE_RADIUS, statusOf } from "./hub-model";
+import { NodePanel, type LoadNode } from "./NodePanel";
 import "./flywheel.css";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** How far an edge bows past a circular arc tangent to its spoke (hypergraph-viz settled on ~1.75–2.1). */
 const BOW = 1.75;
 type Camera = Point & { scale: number };
+// The detail panel covers the right half of a wide canvas, or the lower part of a narrow one.
+const WIDE = 800;
+/** The share of a wide canvas the panel takes (report.css sets its width to match). */
+const PANEL = 0.56;
 export type HubTheme = "dark" | "light";
 type Status = "open" | "broken" | "blocked" | "working" | "done";
 /** Colours an embedding page may set over a palette: records run newest to oldest. */
@@ -25,6 +30,10 @@ type Props = {
   colours?: HubColours;
   /** Name every node that has room for it, rather than only the one in focus. */
   names?: boolean;
+  /** Reads a node's body; when given, clicking a node opens the detail panel and the graph moves aside. */
+  details?: LoadNode;
+  /** Distort the wheel a little, bring the records in, and draw every citation faintly. */
+  organic?: boolean;
 };
 
 // Status reads at a glance; everything else stays quiet so the colour means something.
@@ -48,7 +57,7 @@ const PALETTES = {
   },
 } as const;
 
-export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false }: Props) {
+export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false, details, organic = false }: Props) {
   const P = useMemo(() => {
     const base = PALETTES[theme], rs = colours?.records;
     return {
@@ -62,7 +71,20 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
   const STATUS: Record<string, string> = P.status;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const scene = useMemo(() => layoutHub(nodes, edges), [nodes, edges]);
+  const scene = useMemo(() => layoutHub(nodes, edges, { organic }), [nodes, edges, organic]);
+  const [panel, setPanel] = useState<{ open: boolean; id: string } | null>(null);
+  const panelOpen = !!panel?.open;
+  const panelRef = useRef(panelOpen);
+  panelRef.current = panelOpen;
+  const detailsRef = useRef(details);
+  detailsRef.current = details;
+  const refit = useRef(() => {});
+  useEffect(() => refit.current(), [panelOpen]);
+  const pick = (id: string | null) => {
+    setSelected(id);
+    if (id && detailsRef.current) setPanel({ open: true, id });
+    else setPanel((p) => p && { ...p, open: false });
+  };
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const namesRef = useRef(names);
@@ -115,13 +137,45 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       x: p.x * camera.scale + camera.x,
       y: p.y * camera.scale + camera.y,
     });
+    // The part of the canvas the detail panel leaves visible.
+    const free = () =>
+      !panelRef.current ? { x: 0, y: 0, w: width, h: height }
+        : width < WIDE ? { x: 0, y: 0, w: width, h: height * 0.4 }
+          : { x: 0, y: 0, w: width * (1 - PANEL), h: height };
+    const fitted = (): Camera => {
+      const f = free();
+      return {
+        scale: clamp(Math.min(f.w - 32, f.h - 32) / (2 * scene.extent), 1e-5, 2),
+        x: f.x + f.w / 2,
+        y: f.y + f.h / 2,
+      };
+    };
+    let glide = 0;
     const fit = () => {
-      camera.scale = clamp(Math.min(width - 64, height - 64) / (2 * scene.extent), 1e-5, 2);
-      camera.x = width / 2;
-      camera.y = height / 2;
+      cancelAnimationFrame(glide);
+      camera = fitted();
       invalidate();
     };
+    // Eases the camera to the fitted view, as the panel opens or closes.
+    const glideToFit = () => {
+      cancelAnimationFrame(glide);
+      const from = { ...camera }, to = fitted(), t0 = performance.now();
+      const ms = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 360;
+      const step = (now: number) => {
+        const t = Math.min(1, (now - t0) / ms), e = 1 - (1 - t) ** 3;
+        camera = {
+          x: from.x + (to.x - from.x) * e,
+          y: from.y + (to.y - from.y) * e,
+          scale: from.scale * (to.scale / from.scale) ** e,
+        };
+        invalidate();
+        if (t < 1) glide = requestAnimationFrame(step);
+      };
+      glide = requestAnimationFrame(step);
+    };
+    refit.current = glideToFit;
     const zoomAt = (factor: number, x = width / 2, y = height / 2) => {
+      cancelAnimationFrame(glide);
       const next = clamp(camera.scale * factor, 1e-5, 8),
         ratio = next / camera.scale;
       camera = { x: x - (x - camera.x) * ratio, y: y - (y - camera.y) * ratio, scale: next };
@@ -205,18 +259,24 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         ctx.quadraticCurveTo(2 * mx - (a.x + b.x) / 2, 2 * my - (a.y + b.y) / 2, b.x, b.y);
       };
 
-      // edges: the state tree always; citations and record history only around the focus
+      // edges: the state tree always; citations and record history only around the focus, or
+      // every citation faintly when organic (a claim and its record cite each other: drawn once)
+      const drawn = new Set<string>();
       for (const e of drawable) {
         const ks = scene.kind.get(e.source),
           kt = scene.kind.get(e.target);
         const focus = related && (e.source === active || e.target === active);
         const tree = e.relation === "parent" && ks === "state" && kt === "state";
-        if (!tree && !focus) continue;
+        const cited = organic && e.relation === "citation" && ks !== kt;
+        if (!tree && !focus && !cited) continue;
+        const pair = e.source < e.target ? `${e.source} ${e.target}` : `${e.target} ${e.source}`;
+        if (!focus && cited && drawn.has(pair)) continue;
+        drawn.add(pair);
         const a = point(scene.positions.get(e.source)!),
           b = point(scene.positions.get(e.target)!);
         ctx.strokeStyle = e.relation === "citation" ? P.citation : P.tree;
-        ctx.globalAlpha = focus ? 0.85 : related ? 0.08 : 0.45;
-        ctx.lineWidth = focus ? 1.2 : 0.7;
+        ctx.globalAlpha = focus ? 0.85 : related ? 0.06 : tree ? 0.45 : 0.16;
+        ctx.lineWidth = focus ? 1.8 : tree ? 1.2 : 0.9;
         ctx.beginPath();
         bow(e.source, e.target, a, b);
         ctx.stroke();
@@ -342,6 +402,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       if (drag) {
         if (Math.hypot(p.x - drag.start.x, p.y - drag.start.y) > 4) drag.moved = true;
         if (drag.moved) {
+          cancelAnimationFrame(glide);
           camera.x = drag.camera.x + p.x - drag.start.x;
           camera.y = drag.camera.y + p.y - drag.start.y;
           invalidate();
@@ -360,7 +421,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       const d = drag;
       drag = null;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
-      if (!d.moved) setSelected(hit(local(e)));
+      if (!d.moved) pick(hit(local(e)));
     };
     const leave = () => {
       hover = null;
@@ -376,7 +437,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
     };
     const key = (e: KeyboardEvent) => {
       if (e.key === "f" || e.key === "0") fit();
-      else if (e.key === "Escape") setSelected(null);
+      else if (e.key === "Escape") pick(null);
       else if (e.key === "+" || e.key === "=") zoomAt(1.25);
       else if (e.key === "-") zoomAt(0.8);
     };
@@ -390,6 +451,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       disposed = true;
       observer.disconnect();
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(glide);
       canvas.removeEventListener("pointerdown", down);
       canvas.removeEventListener("pointermove", move);
       canvas.removeEventListener("pointerup", up);
@@ -397,7 +459,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       canvas.removeEventListener("wheel", wheel);
       window.removeEventListener("keydown", key);
     };
-  }, [scene, nodes, edges, P]);
+  }, [scene, nodes, edges, P, organic]);
 
   return (
     <section className="fw-study" aria-label="Hub graph">
@@ -407,6 +469,19 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         tabIndex={0}
         aria-label={`${label}. Hub layout: state at the centre, records on the rim. ${nodes.length} source nodes. Shift + scroll to zoom, drag to pan. F fits, N names the nodes, Escape clears selection.`}
       />
+      {panel && details && (
+        <NodePanel
+          id={panel.id}
+          side="right"
+          open={panel.open}
+          nodes={nodes}
+          edges={edges}
+          load={details}
+          onSelect={pick}
+          onClose={() => pick(null)}
+          onClosed={() => setPanel((p) => (p?.open ? p : null))}
+        />
+      )}
     </section>
   );
 }
