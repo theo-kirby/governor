@@ -17,6 +17,7 @@ import type { Point } from "./flywheel-model";
  * `groups` hold the claims of each status, and the records: each is drawn as a blob
  * round its nodes (a metaball outline) that joins nodes close enough to one another.
  */
+export type StatePacking = "rings" | "compact" | "compact-staggered" | "compact-tight" | "compact-evidence" | "compact-evidence-roomy" | "disc";
 export type Kind = "root" | "state" | "record" | "plan" | "other";
 export type HubRing = { radius: number; kind: "state" | "record" };
 export type HubSector = {
@@ -292,10 +293,19 @@ function loosen(positions: Map<string, Point>, edges: GraphEdge[], hub: string |
   ids.forEach((id, i) => positions.set(id, { x: xs[i], y: ys[i] }));
 }
 
+export type HubLayoutOptions = {
+  includePlan?: boolean; organic?: boolean; statePacking?: StatePacking;
+  rootGap?: number; depthGap?: number; stateRingGap?: number; stateAngularGap?: number;
+  stagger?: number; evidenceOutside?: boolean;
+  stateBlobSize?: number; stateBlobJoin?: number;
+  recordGap?: number; recordRingGap?: number; recordAngularGap?: number; recordSpread?: number;
+  showRecords?: boolean; recordPercent?: number; recordPlacement?: "anchored" | "even"; recordOrder?: "newest" | "oldest";
+};
+
 export function layoutHub(
   nodes: GraphNode[],
   edges: GraphEdge[],
-  options: { includePlan?: boolean; organic?: boolean } = {},
+  options: HubLayoutOptions = {},
 ): HubScene {
   const byId = new Map(nodes.map((n) => [n.id, n]));
   const kind = new Map(nodes.map((n) => [n.id, kindOf(n)]));
@@ -403,17 +413,77 @@ export function layoutHub(
   if (hub) positions.set(hub, { x: 0, y: 0 });
   for (let d = 1; d <= maxDepth; d++) {
     const ids = [...depth].filter(([, v]) => v === d).map(([id]) => id);
-    radius = Math.max(radius + STATE_RING, (ids.length * SPACING) / TAU);
-    const wanted = ids.map((id) => {
+    const wanted = (id: string) => {
       const [a0, a1] = span.get(id)!;
       return (a0 + a1) / 2;
-    });
-    const placed = relaxAngles(wanted, SPACING / radius);
-    ids.forEach((id, i) => {
-      angle.set(id, placed[i]);
-      positions.set(id, { x: Math.cos(placed[i]) * radius, y: Math.sin(placed[i]) * radius });
-    });
-    rings.push({ radius, kind: "state" });
+    };
+    const put = (id: string, a: number, r: number) => {
+      angle.set(id, a);
+      positions.set(id, { x: Math.cos(a) * r, y: Math.sin(a) * r });
+    };
+    const inner = radius + STATE_RING * (d === 1 ? options.rootGap ?? 1 : options.depthGap ?? 1);
+    // Small levels retain the original wheel. Dense levels use area rather than
+    // forcing every sibling onto a circumference that grows linearly with count.
+    const dense = ids.length * SPACING > inner * TAU;
+    const packing = dense ? options.statePacking ?? "rings" : "rings";
+    if (packing === "compact" || packing === "compact-staggered" || packing === "compact-tight" || packing === "compact-evidence" || packing === "compact-evidence-roomy") {
+      const tight = packing === "compact-tight";
+      const roomy = packing === "compact-evidence-roomy";
+      const laneGap = SPACING * (options.stateRingGap ?? (tight ? 0.92 : roomy ? 1.2 : 1));
+      const alongGap = SPACING * (options.stateAngularGap ?? (tight ? 0.94 : roomy ? 1.2 : 1));
+      const firstRadius = options.rootGap !== undefined || options.depthGap !== undefined ? inner : tight ? radius + STATE_RING * 0.7 : roomy ? radius + STATE_RING * 1.15 : inner;
+      const lanes: { r: number; capacity: number; ids: string[] }[] = [];
+      let capacity = 0;
+      while (capacity < ids.length) {
+        const r = firstRadius + lanes.length * laneGap;
+        const count = Math.floor(TAU * r / alongGap);
+        lanes.push({ r, capacity: count, ids: [] });
+        capacity += count;
+      }
+      // Interleave angular neighbours between lanes, keeping status/subtree
+      // sectors together instead of assigning whole statuses to separate rings.
+      for (const id of [...ids].sort((a, b) => wanted(a) - wanted(b))) {
+        const lane = lanes.reduce((a, b) =>
+          (a.ids.length + 0.5) / a.capacity <= (b.ids.length + 0.5) / b.capacity ? a : b);
+        lane.ids.push(id);
+      }
+      if (options.evidenceOutside ?? (packing === "compact-evidence" || packing === "compact-evidence-roomy")) {
+        // Keep each lane's occupancy, but put the claims with most evidence
+        // nearest the record band. Angular order still follows the state tree.
+        const ranked = [...ids].sort((a, b) =>
+          (directAnchors.get(b) ?? 0) - (directAnchors.get(a) ?? 0) || wanted(a) - wanted(b));
+        let cursor = 0;
+        for (const lane of [...lanes].reverse()) {
+          const count = lane.ids.length;
+          lane.ids = ranked.slice(cursor, cursor + count);
+          cursor += count;
+        }
+      }
+      for (const [index, lane] of lanes.entries()) {
+        const stagger = options.stagger ?? (packing === "compact-staggered" ? 0.5 : 0);
+        const offset = (index % 2 ? stagger : -stagger) * alongGap / lane.r;
+        const placed = relaxAngles(lane.ids.map(id => wanted(id) + offset), alongGap / lane.r);
+        lane.ids.forEach((id, i) => put(id, placed[i], lane.r));
+        rings.push({ radius: lane.r, kind: "state" });
+      }
+      radius = lanes[lanes.length - 1].r;
+    } else if (packing === "disc") {
+      // Sunflower packing fills an annulus evenly without a simulation. Match
+      // angular order to the tree sectors so evidence still follows its claims.
+      const slots = ids.map((_, i) => ({
+        a: norm(i * Math.PI * (3 - Math.sqrt(5))) - Math.PI / 2,
+        r: Math.sqrt(inner * inner + i * (SPACING * (options.stateAngularGap ?? 1)) ** 2 / Math.PI),
+      })).sort((a, b) => a.a - b.a);
+      [...ids].sort((a, b) => wanted(a) - wanted(b)).forEach((id, i) => put(id, slots[i].a, slots[i].r));
+      radius = Math.max(...slots.map(p => p.r));
+      // Interior ring guides would imply a depth distinction that isn't present.
+      rings.push({ radius, kind: "state" });
+    } else {
+      radius = Math.max(inner, (ids.length * SPACING * (options.stateAngularGap ?? 1)) / TAU);
+      const placed = relaxAngles(ids.map(wanted), SPACING * (options.stateAngularGap ?? 1) / radius);
+      ids.forEach((id, i) => put(id, placed[i], radius));
+      rings.push({ radius, kind: "state" });
+    }
   }
   // state nodes the tree never reached (orphans) sit on the outer state ring
   const strays = state.filter((n) => !positions.has(n.id));
@@ -426,6 +496,10 @@ export function layoutHub(
   // ---- the rim: anchor each record, then fill rings newest-first
   const anchors = new Map<string, string[]>();
   const recAngle = new Map<string, number>();
+  const rankedRecords = record.filter(n => !hidden.has(n.id)).sort((a, b) =>
+    (Date.parse(b.createdAt ?? "") || 0) - (Date.parse(a.createdAt ?? "") || 0) || a.id.localeCompare(b.id));
+  const keepCount = options.showRecords === false ? 0 : Math.ceil(rankedRecords.length * (options.recordPercent ?? 100) / 100);
+  for (const n of rankedRecords.slice(keepCount)) hidden.add(n.id);
   const visibleRecords = record.filter((n) => !hidden.has(n.id));
   for (const n of visibleRecords) {
     const cites = [...new Set(citedBy.get(n.id) ?? [])].filter((s) => angle.has(s));
@@ -459,27 +533,29 @@ export function layoutHub(
 
   const time = (n: GraphNode) => Date.parse(n.createdAt ?? "") || 0;
   const newestFirst = [...visibleRecords].sort((a, b) => time(b) - time(a) || (a.id < b.id ? -1 : 1));
+  if (options.recordOrder === "oldest") newestFirst.reverse();
+  if (options.recordPlacement === "even") newestFirst.forEach((n, i) => recAngle.set(n.id, i * 2.399963));
   // Slot packing, newest first: each record takes the free slot nearest its anchor on
   // the innermost ring that has one within reach, so a claim's evidence stacks outward
   // as a spoke (newest against the claim) instead of smearing round the circle.
-  const bandStart = (radius || 0) + STATE_RING * (options.organic ? 0.5 : 0.8);
+  const bandStart = (radius || 0) + STATE_RING * (options.organic ? 0.5 : 0.8) * (options.recordGap ?? 1);
   const slots: { r: number; used: Uint8Array }[] = [];
   const ringAt = (k: number) => {
     while (slots.length <= k) {
-      const r = bandStart + slots.length * RECORD_RING;
-      const n = Math.max(8, Math.floor(((TAU * r) / SPACING) * RECORD_FILL));
+      const r = bandStart + slots.length * RECORD_RING * (options.recordRingGap ?? 1);
+      const n = Math.max(8, Math.floor(((TAU * r) / (SPACING * (options.recordAngularGap ?? 1))) * RECORD_FILL));
       slots.push({ r, used: new Uint8Array(n) });
     }
     return slots[k];
   };
-  const REACH = 0.06; // radians a record may drift from its anchor before it moves outward
+  const REACH = options.recordSpread === undefined ? 0.06 : options.recordSpread * Math.PI / 180; // radians a record may drift from its anchor before it moves outward
   for (const n of newestFirst) {
     const want = recAngle.get(n.id)!;
     for (let k = 0; ; k++) {
       const ring = ringAt(k);
       const size = ring.used.length;
       const centre = Math.round((want / TAU) * size) % size;
-      const reach = Math.max(1, Math.round((REACH / TAU) * size));
+      const reach = Math.max(options.recordSpread === 0 ? 0 : 1, Math.round((REACH / TAU) * size));
       let slot = -1;
       for (let d = 0; d <= reach && slot < 0; d++)
         for (const c of d ? [centre - d, centre + d] : [centre]) {
@@ -524,8 +600,8 @@ export function layoutHub(
       ids,
       loops: blobLoops(
         ids.map((id) => positions.get(id)!),
-        BLOB.state.reach,
-        BLOB.state.join,
+        BLOB.state.reach * (options.stateBlobSize ?? 1),
+        options.stateBlobJoin ?? BLOB.state.join,
         others.map((id) => positions.get(id)!),
       ),
     });
@@ -537,5 +613,10 @@ export function layoutHub(
       ids: placedRecords,
       loops: blobLoops(placedRecords.map((id) => positions.get(id)!), BLOB.record.reach, BLOB.record.join),
     });
+  // Fit expanded regions too, including views with records hidden.
+  if (options.stateBlobSize !== undefined || options.stateBlobJoin !== undefined)
+    for (const group of groups)
+      for (const loop of group.loops)
+        for (const point of loop) extent = Math.max(extent, Math.hypot(point.x, point.y) + 8);
   return { hub, positions, kind, depth, anchors, rings, sectors, groups, bandStart, extent, hidden };
 }

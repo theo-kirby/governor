@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphEdge, GraphNode } from "../shared/types";
 import type { Point } from "./flywheel-model";
-import { layoutHub, NODE_RADIUS, statusOf } from "./hub-model";
+import { layoutHub, BLOB, NODE_RADIUS, statusOf, type StatePacking, type HubLayoutOptions } from "./hub-model";
 import { NodePanel, type LoadNode } from "./NodePanel";
 import "./flywheel.css";
+import type { HubSettings } from "./hub-settings";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** How far an edge bows past a circular arc tangent to its spoke (hypergraph-viz settled on ~1.75–2.1). */
@@ -34,6 +35,9 @@ type Props = {
   details?: LoadNode;
   /** Distort the wheel a little, bring the records in, and draw every citation faintly. */
   organic?: boolean;
+  statePacking?: StatePacking;
+  layoutOptions?: HubLayoutOptions;
+  appearance?: Pick<HubSettings, "recordSize" | "recordOpacity" | "ageColours" | "recordBlobs" | "guides" | "citations" | "preserveStateOutlines" | "preserveRecordOutlines" | "stateBlobSize">;
 };
 
 // Status reads at a glance; everything else stays quiet so the colour means something.
@@ -57,7 +61,7 @@ const PALETTES = {
   },
 } as const;
 
-export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false, details, organic = false }: Props) {
+export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false, details, organic = false, statePacking = "rings", layoutOptions, appearance }: Props) {
   const P = useMemo(() => {
     const base = PALETTES[theme], rs = colours?.records;
     return {
@@ -71,7 +75,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
   const STATUS: Record<string, string> = P.status;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const scene = useMemo(() => layoutHub(nodes, edges, { organic }), [nodes, edges, organic]);
+  const scene = useMemo(() => layoutHub(nodes, edges, { organic, statePacking, ...layoutOptions }), [nodes, edges, organic, statePacking, layoutOptions]);
   const [panel, setPanel] = useState<{ open: boolean; id: string } | null>(null);
   const panelOpen = !!panel?.open;
   const panelRef = useRef(panelOpen);
@@ -89,8 +93,10 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
   selectedRef.current = selected;
   const namesRef = useRef(names);
   namesRef.current = names;
+  const appearanceRef = useRef(appearance);
+  appearanceRef.current = appearance;
   const redraw = useRef(() => {});
-  useEffect(() => redraw.current(), [selected, names]);
+  useEffect(() => redraw.current(), [selected, names, appearance]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -142,12 +148,23 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       !panelRef.current ? { x: 0, y: 0, w: width, h: height }
         : width < WIDE ? { x: 0, y: 0, w: width, h: height * 0.4 }
           : { x: 0, y: 0, w: width * (1 - PANEL), h: height };
+    // What is drawn, in world units: every shown node and every blob's outline. The guide rings
+    // can reach well past both, so fitting to the layout's extent left a wide empty margin.
+    const box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+    const take = (x: number, y: number, r = 0) => {
+      box.x0 = Math.min(box.x0, x - r); box.y0 = Math.min(box.y0, y - r);
+      box.x1 = Math.max(box.x1, x + r); box.y1 = Math.max(box.y1, y + r);
+    };
+    for (const n of shown) { const p = scene.positions.get(n.id)!; take(p.x, p.y, NODE_RADIUS * 1.6); }
+    for (const g of scene.groups) for (const loop of g.loops) for (const p of loop) take(p.x, p.y);
+    if (!Number.isFinite(box.x0)) Object.assign(box, { x0: -scene.extent, y0: -scene.extent, x1: scene.extent, y1: scene.extent });
     const fitted = (): Camera => {
       const f = free();
+      const scale = clamp(Math.min((f.w - 32) / (box.x1 - box.x0 || 1), (f.h - 32) / (box.y1 - box.y0 || 1)), 1e-5, 2);
       return {
-        scale: clamp(Math.min(f.w - 32, f.h - 32) / (2 * scene.extent), 1e-5, 2),
-        x: f.x + f.w / 2,
-        y: f.y + f.h / 2,
+        scale,
+        x: f.x + f.w / 2 - ((box.x0 + box.x1) / 2) * scale,
+        y: f.y + f.h / 2 - ((box.y0 + box.y1) / 2) * scale,
       };
     };
     let glide = 0;
@@ -194,7 +211,9 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       const active = hover ?? selectedRef.current;
       const related = active ? new Set([active, ...(neighbours.get(active) ?? [])]) : null;
 
+      const look = appearanceRef.current;
       // guides: dotted state rings, faint record rings, sector spokes
+      if (look?.guides !== false) {
       ctx.lineWidth = 0.8;
       for (const ring of scene.rings) {
         ctx.setLineDash(ring.kind === "state" ? [1, 7] : [1, 12]);
@@ -217,12 +236,14 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       }
       ctx.setLineDash([]);
 
+      }
       // groups: a blob round each status's claims and round the records, joining near neighbours
       ctx.save();
       ctx.translate(camera.x, camera.y);
       ctx.scale(s, s);
       ctx.lineWidth = 1 / s;
       for (const [g, path] of blobs) {
+        if (g.kind === "record" && look?.recordBlobs === false) continue;
         const key = g.kind === "record" ? "record" : (g.status ?? "");
         const rim = g.kind === "record" ? P.record(0.35) : (STATUS[key] ?? P.state);
         ctx.fillStyle = (P.tint as Record<string, string>)[key] ?? P.tint.done;
@@ -231,6 +252,22 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         ctx.strokeStyle = rim;
         ctx.globalAlpha = related ? 0.25 : 0.4;
         ctx.stroke(path);
+      }
+      // Keep each node's isolated region outline visible within the merged blob.
+      // These circles use the region radius, not the metaball kernel radius, so
+      // adding neighbours cannot enlarge them or pull their borders inward.
+      for (const [g] of blobs) {
+        const record = g.kind === "record";
+        if (record ? !look?.preserveRecordOutlines || look.recordBlobs === false : !look?.preserveStateOutlines) continue;
+        ctx.strokeStyle = record ? P.record(0.35) : (STATUS[g.status ?? ""] ?? P.state);
+        ctx.globalAlpha = (related ? 0.25 : 0.4) * (record ? look?.recordOpacity ?? 1 : 1);
+        const radius = record ? BLOB.record.reach : BLOB.state.reach * (look?.stateBlobSize ?? 1);
+        for (const id of g.ids) {
+          const p = scene.positions.get(id)!;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
       ctx.restore();
       ctx.globalAlpha = 1;
@@ -267,7 +304,9 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
           kt = scene.kind.get(e.target);
         const focus = related && (e.source === active || e.target === active);
         const tree = e.relation === "parent" && ks === "state" && kt === "state";
-        const cited = organic && e.relation === "citation" && ks !== kt;
+        const citationMode = look?.citations ?? (organic ? "all" : "focus");
+        if (e.relation === "citation" && citationMode === "none") continue;
+        const cited = citationMode === "all" && e.relation === "citation" && ks !== kt;
         if (!tree && !focus && !cited) continue;
         const pair = e.source < e.target ? `${e.source} ${e.target}` : `${e.target} ${e.source}`;
         if (!focus && cited && drawn.has(pair)) continue;
@@ -290,16 +329,16 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         const k = scene.kind.get(n.id);
         const isHub = n.id === scene.hub;
         const st = statusOf(n);
-        ctx.globalAlpha = related && !related.has(n.id) ? 0.45 : 1;
+        ctx.globalAlpha = (related && !related.has(n.id) ? 0.45 : 1) * (k === "record" ? look?.recordOpacity ?? 1 : 1);
         ctx.beginPath();
-        const r = isHub ? r0 * 1.6 : k === "state" ? r0 * 1.15 : r0 * 0.75;
+        const r = isHub ? r0 * 1.6 : k === "state" ? r0 * 1.15 : r0 * 0.75 * (look?.recordSize ?? 1);
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         if (isHub) {
           ctx.fillStyle = P.hub;
         } else if (k === "state") {
           ctx.fillStyle = (st && STATUS[st]) || P.state;
         } else {
-          ctx.fillStyle = P.record(age(n));
+          ctx.fillStyle = P.record(look?.ageColours === false ? 0.35 : age(n));
         }
         ctx.fill();
         ctx.strokeStyle = P.bg; // a hairline of paper keeps packed nodes apart
@@ -338,7 +377,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
           const t = n.title.length > 44 ? n.title.slice(0, 42) + "…" : n.title;
           ctx.font = "10px Inter, system-ui, sans-serif";
           const w = ctx.measureText(t).width + 6;
-          const y = p.y + NODE_RADIUS * s * (scene.kind.get(n.id) === "state" ? 1.15 : 0.75) + 10;
+          const y = p.y + NODE_RADIUS * s * (scene.kind.get(n.id) === "state" ? 1.15 : 0.75 * (look?.recordSize ?? 1)) + 10;
           const box = { x: p.x - w / 2, y: y - 7, w, h: 14 };
           if (taken.some((o) => box.x < o.x + o.w && box.x + box.w > o.x && box.y < o.y + o.h && box.y + box.h > o.y)) continue;
           taken.push(box);
@@ -384,7 +423,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       for (const n of shown) {
         const q = point(scene.positions.get(n.id)!);
         const d = Math.hypot(q.x - p.x, q.y - p.y);
-        if (d < Math.max(6, NODE_RADIUS * camera.scale) && d < best) {
+        if (d < Math.max(6, NODE_RADIUS * camera.scale * (scene.kind.get(n.id) === "record" ? 0.75 * (appearanceRef.current?.recordSize ?? 1) : 1.15)) && d < best) {
           found = n.id;
           best = d;
         }
@@ -436,6 +475,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       zoomAt(Math.exp(-clamp(e.deltaY || e.deltaX, -100, 100) * 0.002), p.x, p.y);
     };
     const key = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement && e.target.closest("input, select, textarea, [contenteditable]")) return;
       if (e.key === "f" || e.key === "0") fit();
       else if (e.key === "Escape") pick(null);
       else if (e.key === "+" || e.key === "=") zoomAt(1.25);

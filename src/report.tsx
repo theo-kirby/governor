@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HubCanvas, type HubColours } from "./HubCanvas";
+import { parseSettings, type HubSettings } from "./hub-settings";
+import { paletteColours } from "./hub-palettes";
 import { kindOf } from "./hub-model";
 import { FlywheelCanvas } from "./FlywheelCanvas";
 import { parseReportGraph } from "../shared/report";
@@ -13,8 +15,8 @@ import "./report.css";
 const root = document.getElementById("root")!;
 
 // The hub graph and its tools. The names button (or N) names every node that has room.
-function Report({ nodes, edges, hub, light, details, organic }: { nodes: GraphNode[]; edges: GraphEdge[]; hub: boolean; light: boolean; details?: LoadNode; organic: boolean }) {
-  const [names, setNames] = useState(false);
+function Report({ nodes, edges, hub, light, details, organic, settings }: { nodes: GraphNode[]; edges: GraphEdge[]; hub: boolean; light: boolean; details?: LoadNode; organic: boolean; settings?: HubSettings }) {
+  const [names, setNames] = useState(settings?.names ?? false);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "n" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement)) setNames((v) => !v);
@@ -24,10 +26,29 @@ function Report({ nodes, edges, hub, light, details, organic }: { nodes: GraphNo
   }, []);
   const theme = light ? "light" as const : "dark" as const;
   // The embedding page may set its own colours before this script runs: window.GRAPH_THEME = {light, dark}.
-  const colours = (window as { GRAPH_THEME?: Partial<Record<typeof theme, HubColours>> }).GRAPH_THEME?.[theme];
+  // A preset's palette comes second to them; the page's light or dark wins over the preset's theme.
+  const colours = (window as { GRAPH_THEME?: Partial<Record<typeof theme, HubColours>> }).GRAPH_THEME?.[theme]
+    ?? (settings ? paletteColours(settings.palette, theme) : undefined);
+  const look = useMemo(() => settings && {
+    layout: {
+      rootGap: settings.rootGap, depthGap: settings.depthGap, stateRingGap: settings.stateRingGap,
+      stateBlobSize: settings.stateBlobSize, stateBlobJoin: settings.stateBlobJoin, stateAngularGap: settings.stateAngularGap,
+      stagger: settings.stagger, evidenceOutside: settings.evidenceOutside, recordGap: settings.recordGap,
+      recordRingGap: settings.recordRingGap, recordAngularGap: settings.recordAngularGap, recordSpread: settings.recordSpread,
+      showRecords: settings.showRecords, recordPercent: settings.recordPercent, recordPlacement: settings.recordPlacement,
+      recordOrder: settings.recordOrder,
+    },
+    appearance: {
+      recordSize: settings.recordSize, recordOpacity: settings.recordOpacity, ageColours: settings.ageColours,
+      recordBlobs: settings.recordBlobs, preserveStateOutlines: settings.preserveStateOutlines,
+      preserveRecordOutlines: settings.preserveRecordOutlines, stateBlobSize: settings.stateBlobSize,
+      guides: settings.guides, citations: settings.citations,
+    },
+  }, [settings]);
   return <>
     {hub
-      ? <HubCanvas nodes={nodes} edges={edges} label="Committed research memory" theme={theme} colours={colours} names={names} details={details} organic={organic} />
+      ? <HubCanvas nodes={nodes} edges={edges} label="Committed research memory" theme={theme} colours={colours} names={names} details={details}
+          organic={settings ? settings.organic : organic} statePacking={settings?.packing} layoutOptions={look?.layout} appearance={look?.appearance} />
       : <FlywheelCanvas nodes={nodes} edges={edges} label="Committed research memory" />}
     <div className="report-tools">
       <button onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", {key:"f"}))}>Fit graph</button>
@@ -59,6 +80,14 @@ function readBodies(nodes: GraphNode[]): LoadNode | undefined {
   return async (id) => bodies.get(id) ?? null;
 }
 
+// The page may give the hub a layout and look: the viewer's exported config (version 1), in
+// <script id="governor-settings" type="application/json">. Its graph source fields are ignored here.
+function readSettings(): HubSettings | undefined {
+  const el = document.getElementById("governor-settings");
+  if (!el) return undefined;
+  try { return parseSettings(JSON.parse(el.textContent!)); } catch { return undefined; }
+}
+
 try {
   const graph = parseReportGraph(JSON.parse(document.getElementById("flywheel-snapshot")!.textContent!));
   // Use the complete replica view for untyped nodes and plans.
@@ -69,7 +98,7 @@ try {
   const light = document.documentElement.dataset.theme === "light";
   if (light && hub) document.documentElement.classList.add("report-light");
   createRoot(root).render(graph.nodes.length
-    ? <Report nodes={graph.nodes} edges={graph.edges} hub={hub} light={light} details={readBodies(graph.nodes)} organic={document.documentElement.dataset.layout === "organic"} />
+    ? <Report nodes={graph.nodes} edges={graph.edges} hub={hub} light={light} details={readBodies(graph.nodes)} organic={document.documentElement.dataset.layout === "organic"} settings={readSettings()} />
     : <p className="report-message">This graph has no committed nodes yet.</p>);
 } catch {
   root.textContent = "Graph unavailable. Reload the report to try again.";

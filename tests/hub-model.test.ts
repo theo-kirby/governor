@@ -188,3 +188,70 @@ test("the organic layout keeps the hub centred and is the same on every load", (
     for (let j = i + 1; j < placed.length; j++)
       assert.ok(Math.hypot(placed[i].x - placed[j].x, placed[i].y - placed[j].y) > 36, "no two nodes overlap");
 });
+
+for (const statePacking of ["compact", "compact-staggered", "compact-tight", "compact-evidence", "compact-evidence-roomy", "disc"] as const) {
+  test(`${statePacking} packs a crowded level without overlaps, preserves depth and keeps evidence outside`, () => {
+    const nodes = [node("hub", "root")];
+    const edges: GraphEdge[] = [];
+    for (let i = 0; i < 120; i++) {
+      nodes.push(node(`s${i}`, "state"));
+      edges.push(parent("hub", `s${i}`));
+    }
+    nodes.push(node("child", "state"), node("r", "record"));
+    edges.push(parent("s0", "child"), cite("child", "r"));
+    const base = layoutHub(nodes, edges);
+    const packed = layoutHub(nodes, edges, { statePacking });
+    assert.deepEqual(packed.positions, layoutHub(nodes, edges, { statePacking }).positions);
+    assert.deepEqual(packed.positions.get("hub"), { x: 0, y: 0 });
+    const states = nodes.filter(n => n.id.startsWith("s")).map(n => packed.positions.get(n.id)!);
+    assert.ok(Math.max(...states.map(radius)) < radius(base.positions.get("s0")!) * 0.6);
+    assert.ok(Math.min(...states.map(radius)) < radius(base.positions.get("s0")!) * 0.25);
+    assert.ok(radius(packed.positions.get("child")!) > Math.max(...states.map(radius)));
+    assert.ok(radius(packed.positions.get("r")!) > radius(packed.positions.get("child")!));
+    const all = [...packed.positions.values()];
+    for (let i = 0; i < all.length; i++)
+      for (let j = i + 1; j < all.length; j++)
+        assert.ok(Math.hypot(all[i].x - all[j].x, all[i].y - all[j].y) >= 72, `${i}, ${j} overlap`);
+  });
+}
+
+test("record controls filter newest records without moving states, hide records, and reverse age order", () => {
+  const nodes = [node("hub", "root"), node("claim", "state")];
+  const edges = [parent("hub", "claim")];
+  for (let i = 0; i < 100; i++) {
+    nodes.push(node(`rec${i}`, "record", new Date(Date.UTC(2026, 0, 1) + i * 86400000).toISOString()));
+    edges.push(cite("claim", `rec${i}`));
+  }
+  const original = layoutHub(nodes, edges);
+  const filtered = layoutHub(nodes, edges, { recordPercent: 10 });
+  assert.equal([...filtered.positions.keys()].filter(id => id.startsWith("rec")).length, 10);
+  assert.ok(filtered.hidden.has("rec0") && !filtered.hidden.has("rec99"));
+  assert.deepEqual(filtered.positions.get("claim"), original.positions.get("claim"));
+  const hidden = layoutHub(nodes, edges, { showRecords: false });
+  assert.equal(hidden.positions.size, 2);
+  const reversed = layoutHub(nodes, edges, { recordOrder: "oldest" });
+  assert.ok(radius(original.positions.get("rec99")!) < radius(original.positions.get("rec0")!));
+  assert.ok(radius(reversed.positions.get("rec0")!) < radius(reversed.positions.get("rec99")!));
+  const spread = layoutHub(nodes, edges, { recordPlacement: "even", recordSpread: 20, recordGap: 2 });
+  assert.ok(spread.bandStart > original.bandStart);
+  assert.ok(spread.extent < original.extent, "even placement reduces long single-claim fingers");
+});
+
+test("state region size and connection width enlarge blobs without moving nodes", () => {
+  const centres = [{ x: 0, y: 0 }, { x: 140, y: 0 }];
+  assert.equal(blobLoops(centres, 50, 0.25).length, 2);
+  const wider = blobLoops(centres, 50, 0.6);
+  assert.equal(wider.length, 1);
+  assert.ok(inside({ x: 70, y: 0 }, wider[0]));
+  const enlarged = blobLoops([{ x: 0, y: 0 }], 75, 0.25);
+  assert.ok(enlarged[0].every(p => radius(p) > 73));
+  const { nodes, edges } = wheel();
+  nodes.find(n => n.id === "engine")!.tags!.push({ id: "status:working", name: "working" });
+  const before = layoutHub(nodes, edges);
+  const after = layoutHub(nodes, edges, { stateBlobSize: 3, stateBlobJoin: 0.9 });
+  assert.deepEqual(after.positions, before.positions);
+  assert.notDeepEqual(after.groups[0].loops, before.groups[0].loops);
+  for (const group of after.groups)
+    for (const loop of group.loops)
+      for (const point of loop) assert.ok(Number.isFinite(point.x) && radius(point) < after.extent);
+});

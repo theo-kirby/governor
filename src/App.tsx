@@ -10,17 +10,20 @@ const Graph = lazy(() =>
 
 async function read<T>(path: string, signal: AbortSignal): Promise<T> {
   // relative to the build's base, so the viewer also works under a path prefix
-  const response = await fetch(import.meta.env.BASE_URL + path.replace(/^\//, ""), {
-    headers: { "X-Flywheel-Viewer": "1" },
-    signal,
-  });
+  const response = await fetch(
+    import.meta.env.BASE_URL + path.replace(/^\//, ""),
+    {
+      headers: { "X-Flywheel-Viewer": "1" },
+      signal,
+    },
+  );
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Unable to read the graph.");
   return data;
 }
 
 const Hub = lazy(() =>
-  import("./HubCanvas").then((module) => ({ default: module.HubCanvas })),
+  import("./HubViewer").then((module) => ({ default: module.HubViewer })),
 );
 
 const DebugView = lazy(() =>
@@ -64,6 +67,17 @@ function Viewer() {
         setSnapshot(demoGraph);
         setStatus("Demo graph");
       };
+      if (query.get("layout") === "hub" && query.has("config")) {
+        try {
+          const config = JSON.parse(query.get("config")!);
+          if (config.graphSource === "random" || config.graphSource === "procedural" || config.repoPath) {
+            setRepo(query.get("repo") || "");
+            setSnapshot({nodes: [], edges: []});
+            setStatus("Graph viewer");
+            return;
+          }
+        } catch { /* The sidebar reports invalid configs. */ }
+      }
       if (query.has("demo")) {
         showDemo();
         return;
@@ -71,10 +85,10 @@ function Viewer() {
       const requested = query.get("repo");
       let repo = requested?.trim();
       if (!repo) {
-        const config = await read<{ defaultRepo: string; defaultParams?: string }>(
-          "/api/config",
-          controller.signal,
-        );
+        const config = await read<{
+          defaultRepo: string;
+          defaultParams?: string;
+        }>("/api/config", controller.signal);
         repo = config.defaultRepo;
         if (config.defaultParams) {
           for (const [k, v] of new URLSearchParams(config.defaultParams))
@@ -89,6 +103,12 @@ function Viewer() {
           /* Optional preference. */
         }
       }
+      if (query.get("layout") === "hub") {
+        setRepo(repo || "");
+        setSnapshot({nodes: [], edges: []});
+        setStatus("Graph viewer");
+        return;
+      }
       if (!repo) {
         showDemo();
         return;
@@ -101,9 +121,7 @@ function Viewer() {
       if (controller.signal.aborted) return;
       setSnapshot(data);
       setRepo(data.repo);
-      setStatus(
-        data.nodes.length ? "Committed graph" : "No committed nodes",
-      );
+      setStatus(data.nodes.length ? "Committed graph" : "No committed nodes");
       for (const warning of data.warnings || [])
         console.warn("Graph viewer:", warning);
       try {
@@ -131,6 +149,7 @@ function Viewer() {
     void load().catch((error) => {
       if (!controller.signal.aborted) {
         setStatus("Graph unavailable");
+        if (new URLSearchParams(location.search).get("layout") === "hub") setSnapshot({nodes: [], edges: []});
         console.error(
           "Flywheel viewer:",
           error instanceof Error ? error.message : "Graph read failed.",
@@ -149,7 +168,9 @@ function Viewer() {
       {snapshot && (
         <Suspense fallback={null}>
           {new URLSearchParams(location.search).get("layout") === "hub" ? (
-            <Hub nodes={snapshot.nodes} edges={snapshot.edges} label={status} />
+            <Hub
+              defaultRepo={repo || ""}
+            />
           ) : (
             <Graph
               nodes={snapshot.nodes}
