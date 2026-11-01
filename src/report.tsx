@@ -10,13 +10,27 @@ import type { GraphEdge, GraphNode, NodeDetail } from "../shared/types";
 import type { LoadNode } from "./NodePanel";
 import "./report.css";
 
-// A deliberately separate entry point: no fetch, repository selection, storage,
-// demo fallback or messages from the embedding page.
+// A deliberately separate entry point: no fetch, repository selection, storage or demo
+// fallback. The embedding page may talk to it in one narrow way: it posts
+// {type: "governor:focus", ids: [...]} to bring those nodes forward (an empty list clears
+// it), and the embed posts {type: "governor:pick", id} when a node is clicked.
 const root = document.getElementById("root")!;
 
 // The hub graph and its tools. The names button (or N) names every node that has room.
 function Report({ nodes, edges, hub, light, details, organic, settings }: { nodes: GraphNode[]; edges: GraphEdge[]; hub: boolean; light: boolean; details?: LoadNode; organic: boolean; settings?: HubSettings }) {
   const [names, setNames] = useState(settings?.names ?? false);
+  const [focus, setFocus] = useState<string[] | null>(null);
+  useEffect(() => {
+    const known = new Set(nodes.map((n) => n.id));
+    const message = (e: MessageEvent) => {
+      const d = e.data as { type?: unknown; ids?: unknown } | null;
+      if (!d || d.type !== "governor:focus" || !Array.isArray(d.ids)) return;
+      const ids = d.ids.filter((x): x is string => typeof x === "string" && known.has(x)).slice(0, 5000);
+      setFocus(ids.length ? ids : null);
+    };
+    window.addEventListener("message", message);
+    return () => window.removeEventListener("message", message);
+  }, [nodes]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === "n" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement)) setNames((v) => !v);
@@ -48,7 +62,7 @@ function Report({ nodes, edges, hub, light, details, organic, settings }: { node
   return <>
     {hub
       ? <HubCanvas nodes={nodes} edges={edges} label="Committed research memory" theme={theme} colours={colours} names={names} details={details}
-          organic={settings ? settings.organic : organic} statePacking={settings?.packing} layoutOptions={look?.layout} appearance={look?.appearance} />
+          organic={settings ? settings.organic : organic} focus={focus} statePacking={settings?.packing} layoutOptions={look?.layout} appearance={look?.appearance} />
       : <FlywheelCanvas nodes={nodes} edges={edges} label="Committed research memory" />}
     <div className="report-tools">
       <button onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", {key:"f"}))}>Fit graph</button>

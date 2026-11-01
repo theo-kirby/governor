@@ -31,6 +31,8 @@ type Props = {
   colours?: HubColours;
   /** Name every node that has room for it, rather than only the one in focus. */
   names?: boolean;
+  /** Nodes the embedding page asks to bring forward (a finding's evidence, an iteration's records). */
+  focus?: string[] | null;
   /** Reads a node's body; when given, clicking a node opens the detail panel and the graph moves aside. */
   details?: LoadNode;
   /** Distort the wheel a little, bring the records in, and draw every citation faintly. */
@@ -61,7 +63,7 @@ const PALETTES = {
   },
 } as const;
 
-export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false, details, organic = false, statePacking = "rings", layoutOptions, appearance }: Props) {
+export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colours, names = false, details, organic = false, statePacking = "rings", layoutOptions, appearance, focus = null }: Props) {
   const P = useMemo(() => {
     const base = PALETTES[theme], rs = colours?.records;
     return {
@@ -86,6 +88,8 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
   useEffect(() => refit.current(), [panelOpen]);
   const pick = (id: string | null) => {
     setSelected(id);
+    // tell an embedding page which node was chosen, so it can show where it came from
+    if (window.parent !== window) window.parent.postMessage({ type: "governor:pick", id }, "*");
     if (id && detailsRef.current) setPanel({ open: true, id });
     else setPanel((p) => p && { ...p, open: false });
   };
@@ -95,8 +99,10 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
   namesRef.current = names;
   const appearanceRef = useRef(appearance);
   appearanceRef.current = appearance;
+  const focusRef = useRef<Set<string> | null>(null);
+  focusRef.current = focus?.length ? new Set(focus) : null;
   const redraw = useRef(() => {});
-  useEffect(() => redraw.current(), [selected, names, appearance]);
+  useEffect(() => redraw.current(), [selected, names, appearance, focus]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -209,7 +215,8 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       const s = camera.scale;
       const centre = point({ x: 0, y: 0 });
       const active = hover ?? selectedRef.current;
-      const related = active ? new Set([active, ...(neighbours.get(active) ?? [])]) : null;
+      const focused = focusRef.current;
+      const related = active ? new Set([active, ...(neighbours.get(active) ?? [])]) : focused;
 
       const look = appearanceRef.current;
       // guides: dotted state rings, faint record rings, sector spokes
@@ -302,7 +309,8 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
       for (const e of drawable) {
         const ks = scene.kind.get(e.source),
           kt = scene.kind.get(e.target);
-        const focus = related && (e.source === active || e.target === active);
+        const focus = related && (active ? e.source === active || e.target === active
+          : !!focused && focused.has(e.source) && focused.has(e.target));
         const tree = e.relation === "parent" && ks === "state" && kt === "state";
         const citationMode = look?.citations ?? (organic ? "all" : "focus");
         if (e.relation === "citation" && citationMode === "none") continue;
@@ -329,7 +337,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         const k = scene.kind.get(n.id);
         const isHub = n.id === scene.hub;
         const st = statusOf(n);
-        ctx.globalAlpha = (related && !related.has(n.id) ? 0.45 : 1) * (k === "record" ? look?.recordOpacity ?? 1 : 1);
+        ctx.globalAlpha = (related && !related.has(n.id) ? (active ? 0.45 : 0.16) : 1) * (k === "record" ? look?.recordOpacity ?? 1 : 1);
         ctx.beginPath();
         const r = isHub ? r0 * 1.6 : k === "state" ? r0 * 1.15 : r0 * 0.75 * (look?.recordSize ?? 1);
         ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
@@ -344,7 +352,7 @@ export function HubCanvas({ nodes, edges, label = "Graph", theme = "dark", colou
         ctx.strokeStyle = P.bg; // a hairline of paper keeps packed nodes apart
         ctx.lineWidth = Math.max(0.5, Math.min(2, 2.5 * s));
         ctx.stroke();
-        if (n.id === active) {
+        if (n.id === active || (!active && focused?.has(n.id))) {
           ctx.strokeStyle = P.ring;
           ctx.lineWidth = 1.4;
           ctx.beginPath();
