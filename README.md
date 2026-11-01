@@ -184,7 +184,8 @@ use). All test fixtures are synthetic.
 - [CLI reference](https://docs.flywheel.paradigma.inc/cli)
 
 The hub sidebar’s **Color palette** selector offers Classic, Ocean, Forest,
-Sunset, and Neon colors in either light or dark mode. Palette choices are saved
+Sunset, Neon, Aurora, Lavender, Desert, Candy, Glacier, and Botanical colors
+in either light or dark mode. Palette choices are saved
 in config JSON and links; configs without a palette use Ocean. **Randomize config**
 samples the layout and appearance controls, including visibility settings.
 **Undo randomize** restores the config from immediately before the last shuffle.

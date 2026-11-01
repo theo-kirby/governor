@@ -255,3 +255,21 @@ test("state region size and connection width enlarge blobs without moving nodes"
     for (const loop of group.loops)
       for (const point of loop) assert.ok(Number.isFinite(point.x) && radius(point) < after.extent);
 });
+
+test("record rings stay circular but do not repeat axis-aligned slots", () => {
+  const nodes = [node("hub", "root"), node("state", "state")];
+  const edges = [parent("hub", "state")];
+  for (let i = 0; i < 50; i++) {
+    nodes.push(node(`record-${i}`, "record"));
+    edges.push(cite("state", `record-${i}`));
+  }
+  const options = {recordSpread: 0, recordRingGap: 1.25};
+  const scene = layoutHub(nodes, edges, options);
+  assert.deepEqual(scene.positions, layoutHub(nodes, edges, options).positions);
+  const points = nodes.slice(2).map(n => scene.positions.get(n.id)!);
+  const rings = scene.rings.filter(r => r.kind === "record");
+  assert.equal(rings.length, points.length);
+  for (const point of points) assert.ok(rings.some(r => Math.abs(radius(point) - r.radius) < 1e-8));
+  // With one record per ring, the old shared slot origin created a straight spoke.
+  assert.ok(new Set(points.map(p => angle(p).toFixed(6))).size > 40);
+});

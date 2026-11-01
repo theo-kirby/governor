@@ -15,6 +15,12 @@ export const colorPalettes = {
   forest: "Forest",
   sunset: "Sunset",
   neon: "Neon",
+  aurora: "Aurora",
+  lavender: "Lavender",
+  desert: "Desert",
+  candy: "Candy",
+  glacier: "Glacier",
+  botanical: "Botanical",
 } as const;
 export const ranges = {
   graphSeed: [1, 999999, 1],

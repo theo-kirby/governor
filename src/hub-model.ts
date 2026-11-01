@@ -539,12 +539,15 @@ export function layoutHub(
   // the innermost ring that has one within reach, so a claim's evidence stacks outward
   // as a spoke (newest against the claim) instead of smearing round the circle.
   const bandStart = (radius || 0) + STATE_RING * (options.organic ? 0.5 : 0.8) * (options.recordGap ?? 1);
-  const slots: { r: number; used: Uint8Array }[] = [];
+  const slots: { r: number; phase: number; used: Uint8Array }[] = [];
   const ringAt = (k: number) => {
     while (slots.length <= k) {
       const r = bandStart + slots.length * RECORD_RING * (options.recordRingGap ?? 1);
       const n = Math.max(8, Math.floor(((TAU * r) / (SPACING * (options.recordAngularGap ?? 1))) * RECORD_FILL));
-      slots.push({ r, used: new Uint8Array(n) });
+      // Rotate each ring by a different fraction of one slot. A shared zero-angle
+      // origin produces straight-looking columns, especially near the axes.
+      const phase = ((slots.length * 0.618033988749895) % 1) * TAU / n;
+      slots.push({ r, phase, used: new Uint8Array(n) });
     }
     return slots[k];
   };
@@ -554,20 +557,24 @@ export function layoutHub(
     for (let k = 0; ; k++) {
       const ring = ringAt(k);
       const size = ring.used.length;
-      const centre = Math.round((want / TAU) * size) % size;
+      const target = norm(want - ring.phase) / TAU * size;
+      const centre = Math.round(target);
       const reach = Math.max(options.recordSpread === 0 ? 0 : 1, Math.round((REACH / TAU) * size));
-      let slot = -1;
-      for (let d = 0; d <= reach && slot < 0; d++)
-        for (const c of d ? [centre - d, centre + d] : [centre]) {
-          const i = ((c % size) + size) % size;
-          if (!ring.used[i]) {
-            slot = i;
-            break;
-          }
+      // Compare actual angular distance rather than always taking the negative
+      // side first; that bias also made dense evidence groups form rows.
+      let slot = -1, nearest = Infinity;
+      for (let d = -reach; d <= reach; d++) {
+        const candidate = centre + d;
+        const i = ((candidate % size) + size) % size;
+        const distance = Math.abs(candidate - target);
+        if (!ring.used[i] && distance < nearest) {
+          slot = i;
+          nearest = distance;
         }
+      }
       if (slot < 0) continue;
       ring.used[slot] = 1;
-      const a = (slot / size) * TAU;
+      const a = ring.phase + (slot / size) * TAU;
       positions.set(n.id, { x: Math.cos(a) * ring.r, y: Math.sin(a) * ring.r });
       break;
     }

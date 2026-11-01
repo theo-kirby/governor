@@ -7,15 +7,24 @@ const hues = {
   forest: [48, 12, 290, 135, 85, 165],
   sunset: [35, 350, 280, 170, 20, 320],
   neon: [60, 335, 275, 150, 220, 185],
+  aurora: [55, 330, 265, 155, 205, 285],
+  lavender: [38, 345, 275, 165, 225, 255],
+  desert: [42, 8, 320, 100, 28, 185],
+  candy: [45, 350, 285, 165, 220, 325],
+  glacier: [45, 355, 260, 175, 215, 195],
+  botanical: [48, 15, 305, 135, 80, 155],
 } as const;
 
 export function paletteColours(palette: HubSettings["palette"], theme: HubTheme): HubColours | undefined {
   if (palette === "classic") return undefined;
   const dark = theme === "dark";
-  const saturation = palette === "neon" ? 90 : 60;
+  const saturation = {
+    ocean: 60, forest: 60, sunset: 60, neon: 90,
+    aurora: 78, lavender: 40, desert: 48, candy: 82, glacier: 38, botanical: 45,
+  }[palette];
   const hue = hues[palette];
   const ink = (h: number) => `hsl(${h} ${saturation}% ${dark ? 70 : 35}%)`;
-  const tint = (h: number) => `hsl(${h} ${dark ? 30 : 45}% ${dark ? 15 : 92}%)`;
+  const tint = (h: number) => `hsl(${h} ${Math.round(saturation * (dark ? 0.5 : 0.75))}% ${dark ? 15 : 92}%)`;
   const statuses = ["open", "broken", "blocked", "working", "done"] as const;
   return {
     citation: ink(hue[5]),
